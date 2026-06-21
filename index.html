@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-    <title>FTR VR - Seviye 1 (Hassasiyet, Ses ve Ekran Kilit Güncellemesi)</title>
+    <title>FTR VR - Seviye 1 (8 Derece Tolerans & x1.2 Hız)</title>
     <style>
         body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; user-select: none; }
         #overlay {
@@ -21,12 +21,12 @@
         .feedback-container {
             position: absolute; top: 50%; transform: translateY(-50%);
             width: 50%; height: 200px; display: none; justify-content: center; align-items: center;
-            font-size: 90px; font-weight: bold; z-index: 4; pointer-events: none;
+            font-size: 100px; font-weight: bold; z-index: 4; pointer-events: none;
         }
         #feedback-left { left: 0; }
         #feedback-right { left: 50%; }
-        .success-tick { color: #2ecc71; text-shadow: 0 0 20px rgba(46,204,113,0.6); }
-        .fail-cross { color: #e74c3c; text-shadow: 0 0 20px rgba(231,76,60,0.6); }
+        .success-tick { color: #2ecc71; text-shadow: 0 0 25px rgba(46,204,113,0.7); }
+        .fail-cross { color: #e74c3c; text-shadow: 0 0 25px rgba(231,76,60,0.7); }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
@@ -34,10 +34,10 @@
 
     <div id="overlay">
         <h2>Yavru Kuş Kurtarma: Seviye 1</h2>
-        <p><b>HASSASİYET, SES VE EKRAN KİLİT GÜNCELLEMESİ</b></p>
+        <p><b>KLİNİK SPESİFİK REVİZYON MODU</b></p>
         <p>Telefonu tam karşınızda dik tutarak YAN ÇEVİRİN ve butona basın.</p>
-        <p style="font-size: 14px; color: #f1c40f; font-weight: bold;">
-            (Sakkadik titremeleri engellemek için jiroskop hassasiyeti düşürülmüştür.)
+        <p style="font-size: 14px; color: #2ecc71; font-weight: bold;">
+            (X Ekseni Etkin, Tolerans: ±8 Derece, Düşüş Hızı: x1.2)
         </p>
         <button id="startButton">VR MODUNU BAŞLAT</button>
     </div>
@@ -48,29 +48,27 @@
     <div id="feedback-right" class="feedback-container"></div>
 
     <script>
-        // --- KLİNİK VE SAYASAL PARAMETRELER ---
+        // --- KLİNİK PARAMETRELER ---
         let currentStage = 0; 
         let stageTargetCounts = [5, 5, 5, 6]; 
         let stageSuccessCount = 0;
         let loopCounter = 1; 
         let totalScore = 0;
 
-        // Jiroskop Filtreleme Değişkenleri
+        // Jiroskop Yapılandırması (Sadece X Ekseni)
         let targetX = 0;
         let currentX = 0;
-        const filterFactor = 0.02; // Ağır ve pürüzsüz sinematik süzülme
-        
+        const filterFactor = 0.02; // Sinematik pürüzsüz süzülme
         let gyroCenterBeta = null;  
-        
-        // Sakkad Engelleme Güncellemesi
-        const sensitivity = 0.08; // Hassasiyet 0.15'ten 0.08'e düşürüldü (Mikro titremeler elendi)
+        const sensitivity = 0.12; 
         const deadzone = 1.0; 
         
-        // Hız Güncellemesi
-        const dropSpeed = 0.02; // Yarı yarıya yavaş düşüş hızı korundu
+        // Hız Ayarı (İstediğiniz x1.2 Hız Katsayısı)
+        const dropSpeed = 0.048; 
 
+        // Tolerans Ayarı (İstediğiniz 8 Derecelik Tam Tolerans)
         let isWaitingForCenter = true; 
-        const centerTolerance = 5.0; 
+        const centerTolerance = 8.0; 
 
         // VR Kamera Ayarları
         const ipd = 0.15; 
@@ -90,54 +88,52 @@
 
         startButton.addEventListener('click', startOyun);
 
-        // --- SES MOTORU AKTİVASYONU VE SESLER ---
+        // --- SES MOTORU (Web Audio API) ---
         function initAudioEngine() {
             if (!audioCtx) {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             }
             if (audioCtx.state === 'suspended') {
-                audioCtx.resume(); // Kullanıcı gesture anında ses motorunu kesin olarak uyandır
+                audioCtx.resume();
             }
         }
 
         function playSound(type) {
             if (!audioCtx) return;
+            let now = audioCtx.currentTime;
             
             if (type === 'center') {
-                // Merkez kilit açılma klik sesi
                 let osc = audioCtx.createOscillator(); let gain = audioCtx.createGain();
                 osc.connect(gain); gain.connect(audioCtx.destination);
-                osc.frequency.value = 550; gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
-                osc.start(); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
-                osc.stop(audioCtx.currentTime + 0.1);
+                osc.frequency.value = 520; gain.gain.setValueAtTime(0.08, now);
+                osc.start(); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+                osc.stop(now + 0.08);
             } 
             else if (type === 'success') {
-                // Pozitif Başarı Melodisi (Net çift ton)
-                let now = audioCtx.currentTime;
+                // Sepete girme sesi (Net, neşeli ve melodik iki ton)
                 let osc1 = audioCtx.createOscillator(); let gain1 = audioCtx.createGain();
                 osc1.connect(gain1); gain1.connect(audioCtx.destination);
-                osc1.frequency.setValueAtTime(523.25, now); // C5 notası
-                osc1.frequency.setValueAtTime(659.25, now + 0.08); // E5 notası
+                osc1.frequency.setValueAtTime(587.33, now); // D5 Notası
+                osc1.frequency.setValueAtTime(783.99, now + 0.08); // G5 Notası
                 gain1.gain.setValueAtTime(0.2, now);
-                gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
-                osc1.start(now); osc1.stop(now + 0.35);
+                gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc1.start(now); osc1.stop(now + 0.3);
             } 
             else if (type === 'fail') {
-                // Başarısızlık Uyarı Sesi (Kalın bas tonu)
-                let now = audioCtx.currentTime;
+                // Kaçırma sesi (Pes ve kalın başarısızlık uyarısı)
                 let osc = audioCtx.createOscillator(); let gain = audioCtx.createGain();
-                osc.type = 'sawtooth'; 
+                osc.type = 'triangle';
                 osc.connect(gain); gain.connect(audioCtx.destination);
-                osc.frequency.setValueAtTime(160, now); 
-                osc.frequency.linearRampToValueAtTime(100, now + 0.3);
-                gain.gain.setValueAtTime(0.2, now);
-                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
-                osc.start(now); osc.stop(now + 0.35);
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.linearRampToValueAtTime(90, now + 0.25);
+                gain.gain.setValueAtTime(0.25, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc.start(now); osc.stop(now + 0.3);
             }
         }
 
-        // --- GÖRSEL GERİ BİLDİRİM ---
-        function triggerVisualFeedback(isSuccess) {
+        // --- GÖRSEL GERI BILDIRIM VE SES TETIKLEYICI ---
+        function triggerFeedback(isSuccess) {
             if (isSuccess) {
                 fbLeft.innerHTML = '<span class="success-tick">&#10004;</span>';
                 fbRight.innerHTML = '<span class="success-tick">&#10004;</span>';
@@ -157,20 +153,13 @@
             }, 500);
         }
 
-        // --- EKRAN KAPANMA ENGELLEYİCİSİ ---
         async function startWakeLock() {
             if ('wakeLock' in navigator) {
-                try { 
-                    wakeLock = await navigator.wakeLock.request('screen');
-                    console.log("Wake Lock aktif: Ekran kararmayacak.");
-                } catch (err) { 
-                    console.log("Wake lock hatası:", err); 
-                }
+                try { wakeLock = await navigator.wakeLock.request('screen'); } catch (err) { console.log(err); }
             }
         }
 
         function startOyun() {
-            // Tarayıcı kuralları gereği en üst katmanda tetikleme
             initAudioEngine();
             startWakeLock();
             
@@ -261,13 +250,14 @@
 
         function handleOrientation(event) {
             if (!isPlaying) return;
-            let rawBeta = event.beta; 
+            let rawBeta = event.beta; // Sadece X eksenini dinliyoruz, gamma ve alpha elendi
             if (rawBeta === null) return;
 
             if (gyroCenterBeta === null) gyroCenterBeta = rawBeta;
             let deltaBeta = rawBeta - gyroCenterBeta;
 
             if (isWaitingForCenter) {
+                // Diğer eksenler ne olursa olsun, X ekseninde 8 dereceye yaklaşıldığı an kilit açılır
                 if (Math.abs(deltaBeta) <= centerTolerance) {
                     isWaitingForCenter = false; 
                     playSound('center'); 
@@ -303,13 +293,16 @@
         function checkCollisionAndProgress() {
             let hitCorrectNest = false;
             
+            // X ekseni hedef sepet kontrolü
             if (bird.position.x > 0.8 && rightNest.visible) hitCorrectNest = true; 
             else if (bird.position.x < -0.8 && leftNest.visible) hitCorrectNest = true; 
             else if (currentStage === 0 && (bird.position.x > 0.8 || bird.position.x < -0.8)) hitCorrectNest = true; 
 
-            triggerVisualFeedback(hitCorrectNest);
+            // Görsel ve işitsel geri bildirimi anında tetikle
+            triggerFeedback(hitCorrectNest);
 
             if (hitCorrectNest) {
+                // Sadece sepete girdiğinde puan artar ve aşama ilerler
                 stageSuccessCount++; totalScore++;
                 if (stageSuccessCount >= stageTargetCounts[currentStage]) {
                     stageSuccessCount = 0; currentStage++;
@@ -324,6 +317,7 @@
                     }
                 }
             }
+            // Sepete girmediyse puan artmaz (totalScore değişmez), sadece yeni top doğar.
             updateNestVisibilities(); resetBirdPosition();
         }
 
