@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-    <title>FTR VR - Hemipleji Rehabilitasyonu Seviye 1</title>
+    <title>FTR VR - Hemipleji Rehabilitasyonu Seviye 1 (Landscape Optimizeli)</title>
     <style>
         body {
             margin: 0;
@@ -12,7 +12,6 @@
             background-color: #000;
             font-family: sans-serif;
         }
-        /* Giriş ve Kalibrasyon Ekranı overlay */
         #overlay {
             position: absolute;
             width: 100%;
@@ -39,7 +38,6 @@
             margin-top: 20px;
             font-weight: bold;
         }
-        /* VR Split Screen Çizgisi */
         #vr-divider {
             position: absolute;
             left: 50%;
@@ -51,15 +49,14 @@
             display: none;
         }
     </style>
-    <!-- Three.js Kütüphanesi -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
 
     <div id="overlay">
         <h2>Yavru Kuş Kurtarma: Seviye 1</h2>
-        <p>Lütfen telefonu düz tutun ve başınızı nötr pozisyona getirin.</p>
-        <p style="font-size: 14px; color: #bdc3c7;">(VR Box içine yerleştirmeden önce butona basın ve izinleri onaylayın)</p>
+        <p>Lütfen telefonu <b>YAN ÇEVİRİN (Landscape)</b>, VR Box'a koyar gibi düz tutun ve butona basın.</p>
+        <p style="font-size: 14px; color: #bdc3c7;">(Sakkadik hareketler engellendi ve yuvalar %50 büyütüldü)</p>
         <button id="startButton">BAŞLAT VE KALİBRE ET</button>
     </div>
 
@@ -67,24 +64,23 @@
 
     <script>
         // --- KLİNİK VE SAYASAL PARAMETRELER ---
-        let currentStage = 0; // 0: Isınma, 1: Sağ Blok, 2: Sol Blok, 3: Random
-        let stageTargetCounts = [5, 5, 5, 6]; // Sizin belirlediğiniz: 5 Isınma, 5 Sağ, 5 Sol, 6 Random
+        let currentStage = 0; 
+        let stageTargetCounts = [5, 5, 5, 6]; 
         let stageSuccessCount = 0;
-        let loopCounter = 1; // 2 Tur dönecek (Isınma hariç)
+        let loopCounter = 1; 
         let totalScore = 0;
 
-        // Jiroskop Filtreleme Değişkenleri (Low-Pass Filter)
+        // Jiroskop Filtreleme Değişkenleri (Yan Mod İçin Optimize Edildi)
         let targetX = 0;
         let currentX = 0;
-        const filterFactor = 0.08; // Değer küçüldükçe hareket yumuşar, titreme (tremor) engellenir.
-        let gyroCenter = 0; // Kalibrasyon merkez açısı
-        const sensitivity = 0.15; // Hastanın kısıtlı hareketine göre hızı ayarlama çarpanı
-        const deadzone = 0.5; // Küçük titremelerin kuşu hareket ettirmemesi için ölü bölge
+        const filterFactor = 0.05; // Sakkadik sıçramaları önlemek için filtre daha da yumuşatıldı (Daha pürüzsüz)
+        let gyroCenter = 0; 
+        const sensitivity = 0.12; // Yan mod kafa rotasyonu için ideal hassasiyet çarpanı
+        const deadzone = 1.0; // Sakkadik mikro titremeleri yutması için ölü bölge biraz artırıldı
 
-        // Oyun Nesneleri Hız Değişkeni
-        const dropSpeed = 0.04; // Kuşun aşağı süzülme hızı (Çok yavaş, ~8 saniye)
+        const dropSpeed = 0.04; 
 
-        // Three.js ve VR Kurulum Değişkenleri
+        // Three.js ve VR Değişkenleri
         let scenes = [], cameras = [], renderer;
         let bird, leftNest, rightNest;
         let isPlaying = false;
@@ -96,19 +92,17 @@
         startButton.addEventListener('click', startOyun);
 
         function startOyun() {
-            // iOS 13+ Cihazlar için Jiroskop İzin Mekanizması
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 DeviceOrientationEvent.requestPermission()
                     .then(permissionState => {
                         if (permissionState === 'granted') {
                             initGame();
                         } else {
-                            alert('Jiroskop izni reddedildi. Oyun oynanamaz.');
+                            alert('Jiroskop izni reddedildi.');
                         }
                     })
                     .catch(console.error);
             } else {
-                // Android veya eski iOS cihazlar
                 initGame();
             }
         }
@@ -118,61 +112,52 @@
             vrDivider.style.display = 'block';
             isPlaying = true;
 
-            // Jiroskop Dinleyicisi
             window.addEventListener('deviceorientation', handleOrientation, true);
 
-            // WebGL Renderer Kurulumu
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
 
-            // VR BOX İçin Çift Sahne ve Çift Kamera (Stereoscopic) Kurulumu
-            // Sol Göz (Ekranın Sol Yarısı)
+            // Çift Kamera / Çift Sahne Kurulumu
             scenes.push(createSceneArchitecture());
             cameras.push(new THREE.PerspectiveCamera(60, (window.innerWidth / 2) / window.innerHeight, 0.1, 1000));
             cameras[0].position.set(0, 0, 8);
 
-            // Sağ Göz (Ekranın Sağ Yarısı)
             scenes.push(createSceneArchitecture());
             cameras.push(new THREE.PerspectiveCamera(60, (window.innerWidth / 2) / window.innerHeight, 0.1, 1000));
-            cameras[1].position.set(0, 0, 8); // Aynı pozisyon
+            cameras[1].position.set(0, 0, 8);
 
-            // Referans modelleri global değişkenlere ata (Sol sahneden kontrol edip sağa kopyalayacağız)
             bird = scenes[0].getObjectByName("bird");
             leftNest = scenes[0].getObjectByName("leftNest");
             rightNest = scenes[0].getObjectByName("rightNest");
 
-            // İlk Sahne Kurulumunu Güncelle
             updateNestVisibilities();
             resetBirdPosition();
 
-            // Döngüyü Başlat
             animate();
         }
 
-        // 3D Evren Mimarisi (Gökyüzü, Işıklar, Kuş ve Yuvalar)
         function createSceneArchitecture() {
             const scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x1a2a3a); // Pastel Koyu Mavi (Gözü yormayan VR arka planı)
+            scene.background = new THREE.Color(0x1a2a3a); 
 
-            // Işıklandırma
             const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
             scene.add(ambientLight);
             const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
             dirLight.position.set(0, 10, 5);
             scene.add(dirLight);
 
-            // 3D Yavru Kuş Tasarımı (Basit geometrilerden tatlı bir kuş formu)
+            // 3D Kuş
             const birdGroup = new THREE.Group();
             birdGroup.name = "bird";
 
             const bodyGeo = new THREE.SphereGeometry(0.4, 32, 32);
-            const bodyMat = new THREE.MeshLambertMaterial({ color: 0xf1c40f }); // Sarı Gövde
+            const bodyMat = new THREE.MeshLambertMaterial({ color: 0xf1c40f }); 
             const body = new THREE.Mesh(bodyGeo, bodyMat);
             birdGroup.add(body);
 
             const beakGeo = new THREE.ConeGeometry(0.1, 0.3, 4);
-            const beakMat = new THREE.MeshLambertMaterial({ color: 0xe67e22 }); // Turuncu Gaga
+            const beakMat = new THREE.MeshLambertMaterial({ color: 0xe67e22 }); 
             const beak = new THREE.Mesh(beakGeo, beakMat);
             beak.rotation.x = Math.PI / 2;
             beak.position.set(0, 0, 0.4);
@@ -180,9 +165,9 @@
             
             scene.add(birdGroup);
 
-            // Yuva Malzemesi (Saman Görünümlü Açık Kahve)
+            // YUVALAR 1.5 KATINA BÜYÜTÜLDÜ (Radius 0.8 -> 1.2, Height 0.4 -> 0.6 yapıldı)
             const nestMat = new THREE.MeshLambertMaterial({ color: 0xd35400 });
-            const nestGeo = new THREE.CylinderGeometry(0.8, 1, 0.4, 16);
+            const nestGeo = new THREE.CylinderGeometry(1.2, 1.5, 0.6, 16);
 
             // Sol Yuva
             const lNest = new THREE.Mesh(nestGeo, nestMat);
@@ -196,7 +181,7 @@
             rNest.position.set(2.5, -3.5, 0);
             scene.add(rNest);
 
-            // Referans Çizgileri (Görsel Akışı Kolaylaştırmak İçin Arka Planda Hafif Bulutlar)
+            // Arka plan dekor bulutları
             for(let i=0; i<5; i++) {
                 const cloudGeo = new THREE.BoxGeometry(1.5, 0.2, 0.2);
                 const cloudMat = new THREE.MeshBasicMaterial({color: 0x2c3e50, transparent: true, opacity: 0.3});
@@ -208,133 +193,118 @@
             return scene;
         }
 
-        // Jiroskop Verisi İşleme ve Kalibrasyon
+        // YAN TUTUŞ (LANDSCAPE) İÇİN OPTİMİZE EDİLMİŞ JİROSKOP VERİSİ
         function handleOrientation(event) {
             if (!isPlaying) return;
 
-            // Cihazın yana eğilme açısı (Roll) -> VR Box dikey tutulduğu için "gamma" veya "beta" tarayıcı yönüne göre değişebilir.
-            // Genelde portrait modda kafa sağa sola eğildiğinde "gamma" ekseni tetiklenir.
-            let rawAlpha = event.gamma; 
+            // Telefon yan yatırıldığında (Landscape), kafayı sağa sola yatırma hareketi 
+            // tarayıcı tarafından artık 'beta' ekseninden okunur (cihazın yönüne göre beta veya gamma değişebilir).
+            // Çoğu VR Box yerleşiminde yan moddayken sağa-sola eğilme 'beta' verisidir.
+            let rawBeta = event.beta; 
 
-            // İlk okumada cihazın duruşunu sıfır noktası kabul et (Kalibrasyon)
-            if (gyroCenter === 0 && rawAlpha !== null) {
-                gyroCenter = rawAlpha;
+            if (rawBeta === null) return;
+
+            // Kalibrasyon sıfırlaması
+            if (gyroCenter === 0) {
+                gyroCenter = rawBeta;
             }
 
-            let relativeAngle = rawAlpha - gyroCenter;
+            let relativeAngle = rawBeta - gyroCenter;
 
-            // Ölü Bölge (Deadzone) Kontrolü: Küçük titremeleri absorbe et
+            // Sakkadik hareketleri ve mikrotitremeleri filtrelemek için deadzone kontrolü
             if (Math.abs(relativeAngle) < deadzone) {
                 targetX = 0;
             } else {
-                // Sağa/Sola kayma sınırını belirle
+                // Yan duruşta yön hissini doğrulamak için çarpan (gerekirse yönü ters çevirmek için eksi ile çarpılabilir)
                 targetX = relativeAngle * sensitivity;
             }
         }
 
         function resetBirdPosition() {
-            bird.position.set(0, 4, 0); // En üst ortadan başla
+            bird.position.set(0, 4, 0); 
+            targetX = 0;
+            currentX = 0;
         }
 
-        // Klinik Aşamalara Göre Yuvaların Görünürlüğünü Ayarlama Fonksiyonu
         function updateNestVisibilities() {
             if (currentStage === 0) {
-                // Aşama 0: Isınma -> İki yuva da aktif
                 leftNest.visible = true;
                 rightNest.visible = true;
             } else if (currentStage === 1) {
-                // Aşama 1: Sağ Blok -> Sadece sağ yuva aktif
                 leftNest.visible = false;
                 rightNest.visible = true;
             } else if (currentStage === 2) {
-                // Aşama 2: Sol Blok -> Sadece sol yuva aktif
                 leftNest.visible = true;
                 rightNest.visible = false;
             } else if (currentStage === 3) {
-                // Aşama 3: Random -> Rastgele biri aktif
                 const rand = Math.random() > 0.5;
                 leftNest.visible = rand;
                 rightNest.visible = !rand;
             }
 
-            // Sol sahnedeki durumları sağ sahneye de kopyala (VR senkronizasyonu)
             scenes[1].getObjectByName("leftNest").visible = leftNest.visible;
             scenes[1].getObjectByName("rightNest").visible = rightNest.visible;
         }
 
-        // Klinik Akış ve Sayaç Algoritması
         function checkCollisionAndProgress() {
             let hitCorrectNest = false;
 
-            // Kuşun hangi tarafa yakın düştüğünü hesapla
-            if (bird.position.x > 0.5 && rightNest.visible) {
-                hitCorrectNest = true; // Sağ yuvaya girdi
-            } else if (bird.position.x < -0.5 && leftNest.visible) {
-                hitCorrectNest = true; // Sol yuvaya girdi
-            } else if (currentStage === 0 && (bird.position.x > 0.5 || bird.position.x < -0.5)) {
-                hitCorrectNest = true; // Isınma aşamasında ikisi de kabul
+            // Genişleyen yuva boyutuna göre tolerans aralığı artırıldı (X ekseni kontrolü)
+            if (bird.position.x > 0.8 && rightNest.visible) {
+                hitCorrectNest = true; 
+            } else if (bird.position.x < -0.8 && leftNest.visible) {
+                hitCorrectNest = true; 
+            } else if (currentStage === 0 && (bird.position.x > 0.8 || bird.position.x < -0.8)) {
+                hitCorrectNest = true; 
             }
 
             if (hitCorrectNest) {
                 stageSuccessCount++;
                 totalScore++;
-                console.log(`Başarılı! Aşama: ${currentStage}, Bu Aşamadaki Skor: ${stageSuccessCount}/${stageTargetCounts[currentStage]}`);
-
-                // Aşama Sonu Kontrolü
+                
                 if (stageSuccessCount >= stageTargetCounts[currentStage]) {
                     stageSuccessCount = 0;
                     currentStage++;
 
-                    // Döngü Bloğu Bitti mi Kontrolü (1, 2 ve 3 bittiğinde bir loop tamamlanır)
                     if (currentStage > 3) {
                         if (loopCounter < 2) {
                             loopCounter++;
-                            currentStage = 1; // Isınmayı atla, Sağ Blok'a dön
-                            console.log(`--- 1. TUR BİTTİ. 2. TUR BAŞLIYOR ---`);
+                            currentStage = 1; 
                         } else {
-                            // OYUN BİTTİ - SEVİYE 2'ye GEÇİŞ TETİKLENİR
                             isPlaying = false;
-                            alert(`TEBRİKLER! Seviye 1'i başarıyla tamamladınız.\nToplam kurtarılan kuş: ${totalScore}\nŞimdi Seviye 2'ye geçmeye hazırsınız!`);
+                            alert(`TEBRİKLER! Seviye 1'i tamamladınız.\nToplam kurtarılan kuş: ${totalScore}\nŞimdi Seviye 2'ye geçmeye hazırsınız!`);
                             location.reload();
                             return;
                         }
                     }
                 }
-            } else {
-                console.log("Iskalandı! Can eksilmedi, kuş tekrar edecek.");
             }
 
-            // Yeni kuş için hazırlık yap
             updateNestVisibilities();
             resetBirdPosition();
         }
 
-        // Ana Render ve Oyun Döngüsü (Her Karede Çalışır)
         function animate() {
             if (!isPlaying) return;
 
             requestAnimationFrame(animate);
 
-            // Jiroskop verisini Low-Pass Filtre ile pürüzsüzleştirme (Tremor önleme)
+            // Low-Pass Filter (Sakkadik sıçrama engelleyici mekanizma)
             currentX += (targetX - currentX) * filterFactor;
             
-            // Ekran dışına çıkma sınırlandırması (Kuş ekrandan kaybolmasın)
+            // Sınırlar
             if(currentX > 3.5) currentX = 3.5;
             if(currentX < -3.5) currentX = -3.5;
 
-            // Kuşun konumunu güncelle (Sürekli aşağı düşer ve jiroskop ekseninde kayar)
             bird.position.x = currentX;
             bird.position.y -= dropSpeed;
 
-            // Sağ sahnedeki kuşun konumunu sol sahneyle eşitle (VR Senkron)
             scenes[1].getObjectByName("bird").position.copy(bird.position);
 
-            // Kuş yuva hizasına geldi mi (Yere çakılma anı)
-            if (bird.position.y <= -3.3) {
+            if (bird.position.y <= -3.2) {
                 checkCollisionAndProgress();
             }
 
-            // VR BOX İÇİN EKRANI İKİYE BÖLEREK RENDER ETME (Stereoscopic View)
             // Sol Göz Render
             renderer.setScissor(0, 0, window.innerWidth / 2, window.innerHeight);
             renderer.setViewport(0, 0, window.innerWidth / 2, window.innerHeight);
@@ -348,7 +318,6 @@
             renderer.render(scenes[1], cameras[1]);
         }
 
-        // Ekran boyutu değiştiğinde VR pencerelerini güncelleme
         window.addEventListener('resize', onWindowResize, false);
         function onWindowResize() {
             cameras[0].aspect = (window.innerWidth / 2) / window.innerHeight;
