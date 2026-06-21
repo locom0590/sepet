@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-    <title>FTR VR - Seviye 1 (Anasayfa Çözüm A: Zorunlu Merkezleme)</title>
+    <title>FTR VR - Seviye 1 (Tam Sürükleyici VR Modu)</title>
     <style>
         body {
             margin: 0;
@@ -16,7 +16,7 @@
             position: absolute;
             width: 100%;
             height: 100%;
-            background: rgba(20, 30, 40, 0.95);
+            background: rgba(10, 15, 25, 0.98);
             z-index: 10;
             display: flex;
             flex-direction: column;
@@ -28,15 +28,16 @@
             box-sizing: border-box;
         }
         button {
-            padding: 15px 30px;
-            font-size: 18px;
+            padding: 18px 36px;
+            font-size: 20px;
             background-color: #2ecc71;
             color: white;
             border: none;
             border-radius: 8px;
             cursor: pointer;
-            margin-top: 20px;
+            margin-top: 25px;
             font-weight: bold;
+            box-shadow: 0 4px 15px rgba(46, 204, 113, 0.4);
         }
         #vr-divider {
             position: absolute;
@@ -44,7 +45,7 @@
             top: 0;
             width: 2px;
             height: 100%;
-            background-color: rgba(255,255,255,0.2);
+            background-color: rgba(255,255,255,0.15);
             z-index: 5;
             display: none;
         }
@@ -54,11 +55,12 @@
 <body>
 
     <div id="overlay">
-        <h2>Yavru Kuş Kurtarma: Seviye 1</h2>
-        <p><b>ÇÖZÜM A: ZORUNLU MERKEZLEME AKTİF</b></p>
-        <p>Telefonu tam karşınızda dik tutarak YAN ÇEVİRİN (Landscape) ve butona basın.</p>
-        <p style="font-size: 14px; color: #e74c3c; font-weight: bold;">(Her tur başında kafanızı tam dik pozisyona getirene kadar yeni kuş düşmeye başlamaz!)</p>
-        <button id="startButton">BAŞLAT VE KALİBRE ET</button>
+        <h2>Yavru Kuş Kurtarma: Gerçek VR Modu</h2>
+        <p>Telefonu <b>YAN ÇEVİRİN</b> ve VR Box'a yerleştirmeden önce butona basın.</p>
+        <p style="font-size: 14px; color: #f1c40f; font-weight: bold;">
+            (Tam Ekran, Göz Koruma Derinliği ve Ekran Kapanma Engeli Aktif Edilecek)
+        </p>
+        <button id="startButton">VR MODUNU BAŞLAT</button>
     </div>
 
     <div id="vr-divider"></div>
@@ -75,22 +77,26 @@
         let targetX = 0;
         let currentX = 0;
         const filterFactor = 0.05; 
-        let gyroCenter = 0; // İlk kalibrasyondaki mutlak fiziksel merkezimiz
-        const sensitivity = 0.12; 
+        let gyroCenter = 0; 
+        const sensitivity = 0.18; // Uzaklık arttığı için hassasiyet biraz artırıldı
         const deadzone = 1.0; 
 
         const dropSpeed = 0.04; 
 
-        // ÇÖZÜM A DEĞİŞKENLERİ: Kuş serbest mi yoksa merkezleme mi bekleniyor?
+        // ÇÖZÜM A DEĞİŞKENLERİ
         let isWaitingForCenter = true; 
-        const centerTolerance = 2.0; // Hastanın kafasını merkeze ne kadar yaklaştırması gerektiği (derece)
+        const centerTolerance = 2.0; 
 
-        // Three.js ve VR Değişkenleri
+        // VR IPD (Gözler Arası Mesafe Ölçüsü) -> Gerçek 3D derinlik hissi için
+        const ipd = 0.12; 
+
+        // Three.js Değişkenleri
         let scenes = [], cameras = [], renderer;
         let bird, leftNest, rightNest;
         let isPlaying = false;
+        let wakeLock = null;
 
-        // Ses Efekti (Merkeze gelince hastaya geri bildirim vermek için AudioContext)
+        // Ses Efekti
         let audioCtx = null;
 
         const overlay = document.getElementById('overlay');
@@ -105,14 +111,36 @@
             let gain = audioCtx.createGain();
             osc.connect(gain);
             gain.connect(audioCtx.destination);
-            osc.frequency.value = 600; // Net bir bip sesi
+            osc.frequency.value = 600; 
             gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
             osc.start();
             gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
             osc.stop(audioCtx.currentTime + 0.15);
         }
 
+        // TAM EKRAN VE WAKE LOCK (EKRAN KAPANMA ENGELİ) ENTEGRASYONU
+        async function requestScreenHandling() {
+            // 1. Tam Ekran Yap
+            const docEl = document.documentElement;
+            if (docEl.requestFullscreen) { docEl.requestFullscreen(); }
+            else if (docEl.mozRequestFullScreen) { docEl.mozRequestFullScreen(); }
+            else if (docEl.webkitRequestFullscreen) { docEl.webkitRequestFullscreen(); }
+            else if (docEl.msRequestFullscreen) { docEl.msRequestFullscreen(); }
+
+            // 2. Ekran Kararmasını/Kapanmasını Engelle (Wake Lock API)
+            if ('wakeLock' in navigator) {
+                try {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    console.log('Ekran kilitleme aktif: Ekran kapanmayacak.');
+                } catch (err) {
+                    console.log(`Wake Lock hatası: ${err.message}`);
+                }
+            }
+        }
+
         function startOyun() {
+            requestScreenHandling(); // Ekran ayarlarını tetikle
+
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 DeviceOrientationEvent.requestPermission()
                     .then(permissionState => {
@@ -135,17 +163,20 @@
 
             window.addEventListener('deviceorientation', handleOrientation, true);
 
-            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
 
+            // Gelişmiş VR Kamera Yapısı (Göz Derinlikli)
             scenes.push(createSceneArchitecture());
             cameras.push(new THREE.PerspectiveCamera(60, (window.innerWidth / 2) / window.innerHeight, 0.1, 1000));
-            cameras[0].position.set(0, 0, 16);
+            // Sol kamera biraz solda (-ipd) ve uzakta (16)
+            cameras[0].position.set(-ipd, 0, 16); 
 
             scenes.push(createSceneArchitecture());
             cameras.push(new THREE.PerspectiveCamera(60, (window.innerWidth / 2) / window.innerHeight, 0.1, 1000));
-            cameras[1].position.set(0, 0, 16);
+            // Sağ kamera biraz sağda (+ipd) ve uzakta (16)
+            cameras[1].position.set(ipd, 0, 16); 
 
             bird = scenes[0].getObjectByName("bird");
             leftNest = scenes[0].getObjectByName("leftNest");
@@ -159,12 +190,14 @@
 
         function createSceneArchitecture() {
             const scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x1a2a3a); 
+            // Parlaklığı artırmak için arka plan rengini biraz daha canlı tonlara çektik
+            scene.background = new THREE.Color(0x243447); 
 
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+            // Işıkları Güçlendirdik (Dijital Parlaklık Artışı)
+            const ambientLight = new THREE.AmbientLight(0xffffff, 1.2); // 0.7'den 1.2'ye çıkarıldı
             scene.add(ambientLight);
-            const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
-            dirLight.position.set(0, 10, 5);
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(0, 15, 8);
             scene.add(dirLight);
 
             // 3D Kuş
@@ -172,12 +205,12 @@
             birdGroup.name = "bird";
 
             const bodyGeo = new THREE.SphereGeometry(0.4, 32, 32);
-            const bodyMat = new THREE.MeshLambertMaterial({ color: 0xf1c40f }); 
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0xffd700, roughness: 0.3 }); // Daha parlak altın sarısı
             const body = new THREE.Mesh(bodyGeo, bodyMat);
             birdGroup.add(body);
 
             const beakGeo = new THREE.ConeGeometry(0.1, 0.3, 4);
-            const beakMat = new THREE.MeshLambertMaterial({ color: 0xe67e22 }); 
+            const beakMat = new THREE.MeshStandardMaterial({ color: 0xff5722 }); 
             const beak = new THREE.Mesh(beakGeo, beakMat);
             beak.rotation.x = Math.PI / 2;
             beak.position.set(0, 0, 0.4);
@@ -185,8 +218,8 @@
             
             scene.add(birdGroup);
 
-            // Yuvalar (1.5 Kat Büyütülmüş)
-            const nestMat = new THREE.MeshLambertMaterial({ color: 0xd35400 });
+            // Yuvalar (Genişletilmiş ve Belirginleştirilmiş)
+            const nestMat = new THREE.MeshStandardMaterial({ color: 0xe67e22, roughness: 0.5 });
             const nestGeo = new THREE.CylinderGeometry(1.2, 1.5, 0.6, 16);
 
             const lNest = new THREE.Mesh(nestGeo, nestMat);
@@ -199,12 +232,22 @@
             rNest.position.set(2.5, -3.5, 0);
             scene.add(rNest);
 
-            // Hedef Duraklama Çizgisi (Kuş beklerken duracağı yer için görsel kılavuz)
+            // Kılavuz Çizgisi
             const lineGeo = new THREE.BoxGeometry(7, 0.05, 0.1);
-            const lineMat = new THREE.MeshBasicMaterial({color: 0x34495e});
+            const lineMat = new THREE.MeshBasicMaterial({color: 0x475569});
             const line = new THREE.Mesh(lineGeo, lineMat);
             line.position.set(0, 3.3, -0.5);
             scene.add(line);
+
+            // Derinlik Hissini Güçlendiren Ortam Küpleri (Kafa hareketinde paralaks yaratacak sabit nesneler)
+            for(let i=0; i<15; i++) {
+                const blockGeo = new THREE.BoxGeometry(0.4, 0.4, 0.4);
+                const blockMat = new THREE.MeshStandardMaterial({color: 0x334155});
+                const block = new THREE.Mesh(blockGeo, blockMat);
+                // Geniş bir alana ve farklı derinliklere (Z eksenine) dağıtıyoruz
+                block.position.set(Math.random()*12 - 6, Math.random()*10 - 5, Math.random()*10 - 8);
+                scene.add(block);
+            }
 
             return scene;
         }
@@ -215,24 +258,19 @@
             let rawBeta = event.beta; 
             if (rawBeta === null) return;
 
-            // İlk açılışta mutlak fiziksel merkezi kalibre et
             if (gyroCenter === 0) {
                 gyroCenter = rawBeta;
             }
 
             let relativeAngle = rawBeta - gyroCenter;
 
-            // ÇÖZÜM A KONTROLÜ: Eğer merkezleme bekleniyorsa
             if (isWaitingForCenter) {
-                // Hasta kafasını mutlak merkeze getirdi mi? (Örn: -2 ile +2 derece arasında mı?)
                 if (Math.abs(relativeAngle) <= centerTolerance) {
-                    isWaitingForCenter = false; // Kuşu serbest bırak
-                    playCenterBeep(); // İşitsel geribildirim ver
+                    isWaitingForCenter = false; 
+                    playCenterBeep(); 
                 }
-                // Merkez beklerken jiroskop kuşu sağa sola oynatmasın, kuş ortada (0) çakılı beklesin
                 targetX = 0; 
             } else {
-                // Kuş serbest bırakıldıysa normal jiroskop takibi yap
                 if (Math.abs(relativeAngle) < deadzone) {
                     targetX = 0;
                 } else {
@@ -245,8 +283,6 @@
             bird.position.set(0, 4, 0); 
             targetX = 0;
             currentX = 0;
-            
-            // Yeni kuş doğduğunda otomatik olarak kilitle ve hastanın dik pozisyona gelmesini bekle
             isWaitingForCenter = true; 
         }
 
@@ -295,7 +331,9 @@
                             currentStage = 1; 
                         } else {
                             isPlaying = false;
-                            alert(`TEBRİKLER!\nZorunlu Merkezleme Seviyesini Bitirdiniz.\nToplam Skor: ${totalScore}`);
+                            // Çıkışta wake lock kilidini serbest bırak
+                            if (wakeLock !== null) { wakeLock.release(); wakeLock = null; }
+                            alert(`TEBRİKLER! Seviye 1 Başarıyla Bitti.\nToplam Skor: ${totalScore}`);
                             location.reload();
                             return;
                         }
@@ -312,42 +350,44 @@
 
             requestAnimationFrame(animate);
 
-            // Kuş rengini duruma göre değiştir (Merkezleme beklerken opak/grimsi, düşerken sarı)
             if (isWaitingForCenter) {
-                bird.children[0].material.color.setHex(0x7f8c8d); // Kilitli: Gri
+                bird.children[0].material.color.setHex(0x555555); // Kilitli
             } else {
-                bird.children[0].material.color.setHex(0xf1c40f); // Aktif: Canlı Sarı
+                bird.children[0].material.color.setHex(0xffd700); // Aktif Altın Sarısı
             }
 
             currentX += (targetX - currentX) * filterFactor;
             
+            // Kamera derinlik hissi (Paralaks): Kafa eğildikçe kameraları hafifçe zıt yöne kaydırarak
+            // 3D dünyada gerçek bir süzülme hissi uyandırıyoruz.
+            cameras[0].position.x = -ipd + (currentX * 0.2);
+            cameras[1].position.x = ipd + (currentX * 0.2);
+
             if(currentX > 3.5) currentX = 3.5;
             if(currentX < -3.5) currentX = -3.5;
 
             bird.position.x = currentX;
 
-            // ÇÖZÜM A: Sadece merkezleme şartı tamamlandıysa kuşu aşağı düşür
             if (!isWaitingForCenter) {
                 bird.position.y -= dropSpeed;
             } else {
-                // Merkez beklerken kuş yavaşça başlangıç çizgisine süzülüp orada asılı kalır
                 if(bird.position.y > 3.4) bird.position.y -= 0.05;
             }
 
             scenes[1].getObjectByName("bird").position.copy(bird.position);
-            // Renk senkronu
             scenes[1].getObjectByName("bird").children[0].material.color.copy(bird.children[0].material.color);
 
             if (bird.position.y <= -3.2) {
                 checkCollisionAndProgress();
             }
 
-            // VR BOX Çift Ekran Render
+            // Sol Göz
             renderer.setScissor(0, 0, window.innerWidth / 2, window.innerHeight);
             renderer.setViewport(0, 0, window.innerWidth / 2, window.innerHeight);
             renderer.setScissorTest(true);
             renderer.render(scenes[0], cameras[0]);
 
+            // Sağ Göz
             renderer.setScissor(window.innerWidth / 2, 0, window.innerWidth / 2, window.innerHeight);
             renderer.setViewport(window.innerWidth / 2, 0, window.innerWidth / 2, window.innerHeight);
             renderer.setScissorTest(true);
