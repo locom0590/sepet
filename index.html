@@ -98,7 +98,6 @@
         let glowingNestSide = "left"; 
         let distractorStars = [];
         
-        // --- Stage 4 ve 5 Değişkenleri ---
         let passedSlalom = false;
         let memoryTimerStarted = false;
         let memoryStartTime = 0;
@@ -285,14 +284,12 @@
             return scene;
         }
 
-        // --- 1. Stage 3: Yıldız Boyutu ve Renk Güncellemesi ---
         function setupDistractors() {
             distractorStars = [];
-            const starGeo = new THREE.SphereGeometry(0.3, 8, 8); // Kuşun 0.75'i (0.4 * 0.75 = 0.3)
+            const starGeo = new THREE.SphereGeometry(0.3, 8, 8); 
             for(let s=0; s<2; s++) {
                 let group = new THREE.Group();
                 for(let i=0; i<8; i++) {
-                    // Rastgele renk ataması
                     let mesh = new THREE.Mesh(starGeo, new THREE.MeshBasicMaterial({ color: Math.random() * 0xffffff }));
                     mesh.position.set((Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6, -1);
                     mesh.userData = { speedY: 0.02 + Math.random() * 0.03, speedX: (Math.random() - 0.5) * 0.02 };
@@ -334,29 +331,74 @@
             memoryTimerStarted = false;
         }
 
+        // --- DÜZELTİLMİŞ RENK VE KURAL MANTIĞI ---
         function updateGameConfigurations() {
+            let birdHex = COLOR_YELLOW;
             distractorStars.forEach(g => g.visible = false);
-            if (selectedLevel === "L1" && currentStage === 3) {
-                distractorStars.forEach(g => g.visible = true);
+
+            if (selectedLevel === "L1") {
+                // Stage'e göre kural belirleme
+                if (currentStage === 0) {
+                    currentBirdColorType = "yellow";
+                    leftNest.material.color.setHex(COLOR_BRIGHT_ORANGE);
+                    rightNest.material.color.setHex(COLOR_BRIGHT_ORANGE);
+                } else if (currentStage === 1) {
+                    currentBirdColorType = Math.random() > 0.5 ? "blue" : "red";
+                    leftNest.material.color.setHex(COLOR_BLUE);
+                    rightNest.material.color.setHex(COLOR_RED);
+                } else if (currentStage === 2) {
+                    currentBirdColorType = Math.random() > 0.5 ? "blue" : "red";
+                    leftNest.material.color.setHex(COLOR_RED);
+                    rightNest.material.color.setHex(COLOR_BLUE);
+                } else if (currentStage === 3) {
+                    currentBirdColorType = Math.random() > 0.5 ? "blue" : "red";
+                    leftNest.material.color.setHex(COLOR_RED);
+                    rightNest.material.color.setHex(COLOR_BLUE);
+                    distractorStars.forEach(g => g.visible = true);
+                } else if (currentStage === 4) {
+                    currentBirdColorType = Math.random() > 0.5 ? "blue" : "red";
+                    leftNest.material.color.setHex(COLOR_RED);
+                    rightNest.material.color.setHex(COLOR_BLUE);
+                } else if (currentStage === 5) {
+                    currentBirdColorType = Math.random() > 0.5 ? "blue" : "red";
+                    initialMemoryColor = currentBirdColorType;
+                    leftNest.material.color.setHex(COLOR_RED);
+                    rightNest.material.color.setHex(COLOR_BLUE);
+                }
+                
+                // Renkleri uygula
+                if (currentBirdColorType === "blue") birdHex = COLOR_BLUE;
+                else if (currentBirdColorType === "red") birdHex = COLOR_RED;
+                else birdHex = COLOR_YELLOW;
+                
+                bird.children[0].material.color.setHex(birdHex);
             }
         }
 
+        // --- DÜZELTİLMİŞ KONTROL MANTIĞI ---
         function checkCollisionAndProgress() {
             let hitCorrectNest = false;
             const finalX = bird.position.x;
 
-            let reactionDuration = performance.now() - lockUnlockTime;
-            totalReactionTime += reactionDuration;
-            validReactionCount++;
+            // Stage'e özel doğruluk kontrolü
+            if (currentStage === 0) {
+                hitCorrectNest = true; // Eğitim aşaması
+            } else if (currentStage === 1 || currentStage === 2) {
+                if (finalX < -0.8 && currentBirdColorType === "blue") hitCorrectNest = true;
+                if (finalX > 0.8 && currentBirdColorType === "red") hitCorrectNest = true;
+            } else if (currentStage === 3 || currentStage === 4) {
+                if (finalX < -0.8 && currentBirdColorType === "red") hitCorrectNest = true;
+                if (finalX > 0.8 && currentBirdColorType === "blue") hitCorrectNest = true;
+            } else if (currentStage === 5) {
+                if (finalX < -0.8 && initialMemoryColor === "red") hitCorrectNest = true;
+                if (finalX > 0.8 && initialMemoryColor === "blue") hitCorrectNest = true;
+            }
 
-            // Basit mantık kontrolü
-            if (finalX < -0.8 || finalX > 0.8) hitCorrectNest = true;
-            
             triggerFeedback(hitCorrectNest);
             if (hitCorrectNest) { totalScore++; stageSuccessCount++; }
             
             if (stageSuccessCount >= 5) {
-                stageSuccessCount = 0; currentStage++; 
+                stageSuccessCount = 0; currentStage++;
                 if (currentStage > 5) { endSessionAndReport(); return; }
             }
             updateGameConfigurations(); resetBirdPosition();
@@ -409,7 +451,6 @@
             bird.position.x = currentX;
 
             if (!isWaitingForCenter) { 
-                // Stage 4 slalom geçilmediyse aşağı inmesini engelle (opsiyonel basit mantık)
                 if(selectedLevel === "L1" && currentStage === 4 && !passedSlalom && bird.position.y < 0) {
                     // Engel geçilmediği sürece kuş yavaşlar veya durur
                 } else {
