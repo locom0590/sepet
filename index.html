@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-    <title>FTR VR - Seviye 1 (Fleksiyon/Ekstansiyon Serbest Mod)</title>
+    <title>FTR VR - Seviye 1 (Ağır Sinematik ve Geri Bildirimli Mod)</title>
     <style>
-        body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
+        body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; user-select: none; }
         #overlay {
             position: absolute; width: 100%; height: 100%; background: rgba(10, 15, 25, 0.98);
             z-index: 10; display: flex; flex-direction: column; justify-content: center; align-items: center;
@@ -16,6 +16,17 @@
             border-radius: 8px; cursor: pointer; margin-top: 25px; font-weight: bold;
         }
         #vr-divider { position: absolute; left: 50%; top: 0; width: 2px; height: 100%; background-color: rgba(255,255,255,0.15); z-index: 5; display: none; }
+        
+        /* Çift Ekran İçin Görsel Geri Bildirim Göstergeleri */
+        .feedback-container {
+            position: absolute; top: 50%; transform: translateY(-50%);
+            width: 50%; height: 200px; display: none; justify-content: center; align-items: center;
+            font-size: 90px; font-weight: bold; z-index: 4; pointer-events: none;
+        }
+        #feedback-left { left: 0; }
+        #feedback-right { left: 50%; }
+        .success-tick { color: #2ecc71; text-shadow: 0 0 20px rgba(46,204,113,0.6); }
+        .fail-cross { color: #e74c3c; text-shadow: 0 0 20px rgba(231,76,60,0.6); }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
@@ -23,15 +34,18 @@
 
     <div id="overlay">
         <h2>Yavru Kuş Kurtarma: Seviye 1</h2>
-        <p><b>ÇÖZÜM A: SAĞ-SOL ODAKLI MERKEZLEME</b></p>
+        <p><b>SİNEMATİK VE GERİ BİLDİRİMLİ KLİNİK MOD</b></p>
         <p>Telefonu tam karşınızda dik tutarak YAN ÇEVİRİN ve butona basın.</p>
-        <p style="font-size: 14px; color: #f1c40f; font-weight: bold;">
-            (Öne ve arkaya eğilmeler tamamen serbesttir. Kilit sadece sağa/sola dikleştiğinizde (±5 derece) açılır!)
+        <p style="font-size: 14px; color: #3498db; font-weight: bold;">
+            (Düşüş hızı yarıya indirildi, süzülme yumuşatıldı. Başarı durumunda sesli ve görsel bildirim tetiklenir.)
         </p>
         <button id="startButton">VR MODUNU BAŞLAT</button>
     </div>
 
     <div id="vr-divider"></div>
+    
+    <div id="feedback-left" class="feedback-container"></div>
+    <div id="feedback-right" class="feedback-container"></div>
 
     <script>
         // --- KLİNİK VE SAYASAL PARAMETRELER ---
@@ -41,20 +55,20 @@
         let loopCounter = 1; 
         let totalScore = 0;
 
-        // Jiroskop Filtreleme Değişkenleri
+        // Jiroskop Filtreleme Değişkenleri (Sinematik Ağırlaştırma)
         let targetX = 0;
         let currentX = 0;
-        const filterFactor = 0.05; 
+        const filterFactor = 0.02; // 0.05'ten 0.02'ye düşürüldü (Çok daha pürüzsüz ve ağır)
         
-        // --- TEK EKSENLİ SEÇİCİ KALİBRASYON ---
-        let gyroCenterBeta = null;  // Sadece sağa/sola yatış merkezi baz alınacak
-        
+        let gyroCenterBeta = null;  
         const sensitivity = 0.15; 
         const deadzone = 1.0; 
-        const dropSpeed = 0.04; 
+        
+        // Düşüş Hızı (Yarıya Düşürüldü)
+        const dropSpeed = 0.02; // 0.04'ten 0.02'ye indirildi
 
         let isWaitingForCenter = true; 
-        const centerTolerance = 5.0; // Sadece sağa/sola ±5 derece tolerans
+        const centerTolerance = 5.0; 
 
         // VR Kamera Ayarları (Toe-in 3D Derinlik)
         const ipd = 0.15; 
@@ -69,19 +83,68 @@
         const overlay = document.getElementById('overlay');
         const startButton = document.getElementById('startButton');
         const vrDivider = document.getElementById('vr-divider');
+        const fbLeft = document.getElementById('feedback-left');
+        const fbRight = document.getElementById('feedback-right');
 
         startButton.addEventListener('click', startOyun);
 
-        function playCenterBeep() {
+        // --- TELİFSİZ VE BAĞIMSIZ SES MOTORU (Web Audio API) ---
+        function playSound(type) {
             if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            let osc = audioCtx.createOscillator();
-            let gain = audioCtx.createGain();
-            osc.connect(gain); gain.connect(audioCtx.destination);
-            osc.frequency.value = 600; 
-            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
-            osc.start();
-            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
-            osc.stop(audioCtx.currentTime + 0.15);
+            
+            if (type === 'center') {
+                // Merkez kilit açılma sesi (Hafif klik)
+                let osc = audioCtx.createOscillator(); let gain = audioCtx.createGain();
+                osc.connect(gain); gain.connect(audioCtx.destination);
+                osc.frequency.value = 600; gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+                osc.start(); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.12);
+                osc.stop(audioCtx.currentTime + 0.12);
+            } 
+            else if (type === 'success') {
+                // Pozitif Başarı Melodisi (Çift Tonlu Neşeli Ses)
+                let now = audioCtx.currentTime;
+                let osc1 = audioCtx.createOscillator(); let gain1 = audioCtx.createGain();
+                osc1.connect(gain1); gain1.connect(audioCtx.destination);
+                osc1.frequency.setValueAtTime(523.25, now); // C5 notası
+                osc1.frequency.setValueAtTime(659.25, now + 0.1); // E5 notası
+                gain1.gain.setValueAtTime(0.15, now);
+                gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc1.start(now); osc1.stop(now + 0.3);
+            } 
+            else if (type === 'fail') {
+                // Başarısızlık Sesi (Kalın Uyarı Tonu)
+                let now = audioCtx.currentTime;
+                let osc = audioCtx.createOscillator(); let gain = audioCtx.createGain();
+                osc.type = 'sawtooth'; // Daha belirgin bir uyarı için testere dişi dalga
+                osc.connect(gain); gain.connect(audioCtx.destination);
+                osc.frequency.setValueAtTime(180, now); // Kalın pes ses
+                osc.frequency.linearRampToValueAtTime(120, now + 0.25);
+                gain.gain.setValueAtTime(0.12, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc.start(now); osc.stop(now + 0.3);
+            }
+        }
+
+        // --- GÖRSEL GERİ BİLDİRİM TETİKLEYİCİSİ ---
+        function triggerVisualFeedback(isSuccess) {
+            if (isSuccess) {
+                fbLeft.innerHTML = '<span class="success-tick">&#10004;</span>';
+                fbRight.innerHTML = '<span class="success-tick">&#10004;</span>';
+                playSound('success');
+            } else {
+                fbLeft.innerHTML = '<span class="fail-cross">&#10006;</span>';
+                fbRight.innerHTML = '<span class="fail-cross">&#10006;</span>';
+                playSound('fail');
+            }
+            
+            fbLeft.style.display = 'flex';
+            fbRight.style.display = 'flex';
+
+            // 500ms (0.5 saniye) sonra ekrandan temizle
+            setTimeout(() => {
+                fbLeft.style.display = 'none';
+                fbRight.style.display = 'none';
+            }, 500);
         }
 
         async function requestScreenHandling() {
@@ -116,14 +179,11 @@
             scenes.push(createSceneArchitecture());
             scenes.push(createSceneArchitecture());
 
-            // 3D Derinlikli Kameralar (Toe-in)
             cameras.push(new THREE.PerspectiveCamera(90, (window.innerWidth / 2) / window.innerHeight, 0.1, 1000));
-            cameras[0].position.set(-ipd, 0, 7.5); 
-            cameras[0].rotation.y = 0.015; 
+            cameras[0].position.set(-ipd, 0, 7.5); cameras[0].rotation.y = 0.015; 
 
             cameras.push(new THREE.PerspectiveCamera(90, (window.innerWidth / 2) / window.innerHeight, 0.1, 1000));
-            cameras[1].position.set(ipd, 0, 7.5); 
-            cameras[1].rotation.y = -0.015; 
+            cameras[1].position.set(ipd, 0, 7.5); cameras[1].rotation.y = -0.015; 
 
             bird = scenes[0].getObjectByName("bird");
             leftNest = scenes[0].getObjectByName("leftNest");
@@ -142,7 +202,6 @@
             const ambientLight = new THREE.AmbientLight(0xffffff, 1.5); 
             scene.add(ambientLight);
 
-            // 3D Kuş
             const birdGroup = new THREE.Group();
             birdGroup.name = "bird";
 
@@ -160,21 +219,17 @@
             
             scene.add(birdGroup);
 
-            // Yuvalar (1.5 Kat Büyük ve Pürüzsüz)
             const nestMat = new THREE.MeshBasicMaterial({ color: 0xe67e22 });
             const nestGeo = new THREE.CylinderGeometry(1.2, 1.5, 0.6, 32); 
 
             const lNest = new THREE.Mesh(nestGeo, nestMat);
-            lNest.name = "leftNest";
-            lNest.position.set(-2.5, -3.5, 0);
+            lNest.name = "leftNest"; lNest.position.set(-2.5, -3.5, 0);
             scene.add(lNest);
 
             const rNest = new THREE.Mesh(nestGeo, nestMat);
-            rNest.name = "rightNest";
-            rNest.position.set(2.5, -3.5, 0);
+            rNest.name = "rightNest"; rNest.position.set(2.5, -3.5, 0);
             scene.add(rNest);
 
-            // Kılavuz Çizgisi
             const lineGeo = new THREE.BoxGeometry(7, 0.04, 0.1);
             const lineMat = new THREE.MeshBasicMaterial({color: 0x34495e});
             const line = new THREE.Mesh(lineGeo, lineMat);
@@ -186,23 +241,16 @@
 
         function handleOrientation(event) {
             if (!isPlaying) return;
-            
-            let rawBeta = event.beta; // Sadece sağa-sola lateral fleksiyonu dinliyoruz
+            let rawBeta = event.beta; 
             if (rawBeta === null) return;
 
-            // İlk kalibrasyon merkezi (Öne/arkaya bakan gamma tamamen elendi)
-            if (gyroCenterBeta === null) {
-                gyroCenterBeta = rawBeta;
-            }
-
-            // Merkezden sağa veya sola kaç derece saptığını bul
+            if (gyroCenterBeta === null) gyroCenterBeta = rawBeta;
             let deltaBeta = rawBeta - gyroCenterBeta;
 
             if (isWaitingForCenter) {
-                // Öne-arkaya eğilme ne olursa olsun, sağ-sol sapması 5 derecenin altına indiği an kilit açılır
                 if (Math.abs(deltaBeta) <= centerTolerance) {
                     isWaitingForCenter = false; 
-                    playCenterBeep(); 
+                    playSound('center'); 
                 }
                 targetX = 0; 
             } else {
@@ -234,9 +282,14 @@
 
         function checkCollisionAndProgress() {
             let hitCorrectNest = false;
+            
+            // X koordinat tolerans kontrolü
             if (bird.position.x > 0.8 && rightNest.visible) hitCorrectNest = true; 
             else if (bird.position.x < -0.8 && leftNest.visible) hitCorrectNest = true; 
             else if (currentStage === 0 && (bird.position.x > 0.8 || bird.position.x < -0.8)) hitCorrectNest = true; 
+
+            // Geri bildirim sistemini tetikle
+            triggerVisualFeedback(hitCorrectNest);
 
             if (hitCorrectNest) {
                 stageSuccessCount++; totalScore++;
@@ -266,6 +319,7 @@
                 bird.children[0].material.color.setHex(0xffd700); 
             }
 
+            // Ağırlaştırılmış pürüzsüz geçiş filtresi
             currentX += (targetX - currentX) * filterFactor;
             
             if(currentX > 3.5) currentX = 3.5;
