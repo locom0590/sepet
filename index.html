@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-    <title>FTR VR - Seviye 1 (Çözüm C: Güçlendirilmiş Rüzgar Modu)</title>
+    <title>FTR VR - Seviye 1 (Çözüm A: 5 Derece Tolerans)</title>
     <style>
         body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
         #overlay {
@@ -23,9 +23,11 @@
 
     <div id="overlay">
         <h2>Yavru Kuş Kurtarma: Seviye 1</h2>
-        <p><b>ÇÖZÜM C: GÜÇLENDİRİLMİŞ RÜZGAR EFEKTİ</b></p>
-        <p>Telefonu YAN ÇEVİRİN, düz tutun ve butona basın.</p>
-        <p style="font-size: 14px; color: #3498db; font-weight: bold;">(Kuş jiroskoptan bağımsız olarak zıt yöne savrulur. Yenmek için aktif kuvvet uygulayın!)</p>
+        <p><b>ÇÖZÜM A: ZORUNLU MERKEZLEME</b></p>
+        <p>Telefonu tam karşınızda dik tutarak YAN ÇEVİRİN ve butona basın.</p>
+        <p style="font-size: 14px; color: #e74c3c; font-weight: bold;">
+            (Kafanızı merkeze ±5 derece yaklaştırana kadar kuş havada asılı bekler!)
+        </p>
         <button id="startButton">VR MODUNU BAŞLAT</button>
     </div>
 
@@ -49,10 +51,9 @@
 
         const dropSpeed = 0.04; 
 
-        // --- ÇÖZÜM C DEĞİŞKENLERİ (GÜÇLENDİRİLMİŞ RÜZGAR) ---
-        let lastSuccessfulSide = "none"; 
-        let currentWindForce = 0; 
-        const windStrength = 0.04; // Rüzgar baz gücü artırıldı
+        // --- ÇÖZÜM A DEĞİŞKENLERİ (GÜNCELLENEN ALAN) ---
+        let isWaitingForCenter = true; 
+        const centerTolerance = 5.0; // Klinik tolerans açısı 5 dereceye çıkarıldı
 
         // VR Kamera Ayarları (Toe-in 3D Derinlik)
         const ipd = 0.15; 
@@ -62,12 +63,25 @@
         let bird, leftNest, rightNest;
         let isPlaying = false;
         let wakeLock = null;
+        let audioCtx = null;
 
         const overlay = document.getElementById('overlay');
         const startButton = document.getElementById('startButton');
         const vrDivider = document.getElementById('vr-divider');
 
         startButton.addEventListener('click', startOyun);
+
+        function playCenterBeep() {
+            if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            let osc = audioCtx.createOscillator();
+            let gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.frequency.value = 600; 
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            osc.start();
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+            osc.stop(audioCtx.currentTime + 0.15);
+        }
 
         async function requestScreenHandling() {
             const docEl = document.documentElement;
@@ -101,7 +115,7 @@
             scenes.push(createSceneArchitecture());
             scenes.push(createSceneArchitecture());
 
-            // 3D Odaklı Kameralar
+            // 3D Derinlikli Kameralar (Toe-in)
             cameras.push(new THREE.PerspectiveCamera(90, (window.innerWidth / 2) / window.innerHeight, 0.1, 1000));
             cameras[0].position.set(-ipd, 0, 7.5); 
             cameras[0].rotation.y = 0.015; 
@@ -145,7 +159,7 @@
             
             scene.add(birdGroup);
 
-            // Yuvalar (%50 Büyük)
+            // Yuvalar (1.5 Kat Büyük ve Pürüzsüz)
             const nestMat = new THREE.MeshBasicMaterial({ color: 0xe67e22 });
             const nestGeo = new THREE.CylinderGeometry(1.2, 1.5, 0.6, 32); 
 
@@ -159,6 +173,13 @@
             rNest.position.set(2.5, -3.5, 0);
             scene.add(rNest);
 
+            // Kılavuz Çizgisi
+            const lineGeo = new THREE.BoxGeometry(7, 0.04, 0.1);
+            const lineMat = new THREE.MeshBasicMaterial({color: 0x34495e});
+            const line = new THREE.Mesh(lineGeo, lineMat);
+            line.position.set(0, 3.3, -0.5);
+            scene.add(line);
+
             return scene;
         }
 
@@ -170,26 +191,26 @@
             if (gyroCenter === 0) gyroCenter = rawBeta;
             let relativeAngle = rawBeta - gyroCenter;
 
-            if (Math.abs(relativeAngle) < deadzone) {
-                targetX = 0;
+            // Merkezleme Kontrolü (Genişletilmiş ±5 derece koridoru)
+            if (isWaitingForCenter) {
+                if (Math.abs(relativeAngle) <= centerTolerance) {
+                    isWaitingForCenter = false; 
+                    playCenterBeep(); 
+                }
+                targetX = 0; 
             } else {
-                targetX = relativeAngle * sensitivity;
+                if (Math.abs(relativeAngle) < deadzone) {
+                    targetX = 0;
+                } else {
+                    targetX = relativeAngle * sensitivity;
+                }
             }
         }
 
         function resetBirdPosition() {
             bird.position.set(0, 4, 0); 
-            targetX = 0; 
-            currentX = 0;
-
-            // Rüzgar Yönü Ataması
-            if (lastSuccessfulSide === "right") {
-                currentWindForce = -windStrength; // Sola doğru it
-            } else if (lastSuccessfulSide === "left") {
-                currentWindForce = windStrength;  // Sağa doğru it
-            } else {
-                currentWindForce = Math.random() > 0.5 ? windStrength : -windStrength;
-            }
+            targetX = 0; currentX = 0;
+            isWaitingForCenter = true; 
         }
 
         function updateNestVisibilities() {
@@ -206,17 +227,9 @@
 
         function checkCollisionAndProgress() {
             let hitCorrectNest = false;
-            
-            if (bird.position.x > 0.8 && rightNest.visible) {
-                hitCorrectNest = true; 
-                lastSuccessfulSide = "right"; 
-            } else if (bird.position.x < -0.8 && leftNest.visible) {
-                hitCorrectNest = true; 
-                lastSuccessfulSide = "left"; 
-            } else if (currentStage === 0 && (bird.position.x > 0.8 || bird.position.x < -0.8)) {
-                hitCorrectNest = true; 
-                lastSuccessfulSide = bird.position.x > 0.8 ? "right" : "left";
-            }
+            if (bird.position.x > 0.8 && rightNest.visible) hitCorrectNest = true; 
+            else if (bird.position.x < -0.8 && leftNest.visible) hitCorrectNest = true; 
+            else if (currentStage === 0 && (bird.position.x > 0.8 || bird.position.x < -0.8)) hitCorrectNest = true; 
 
             if (hitCorrectNest) {
                 stageSuccessCount++; totalScore++;
@@ -227,7 +240,7 @@
                         else {
                             isPlaying = false;
                             if (wakeLock !== null) { wakeLock.release(); wakeLock = null; }
-                            alert(`TEBRİKLER! Seviye 1 Rüzgar Modu Tamamlandı!\nToplam Skor: ${totalScore}`);
+                            alert(`TEBRİKLER! Seviye 1 Başarıyla Bitti.\nToplam Skor: ${totalScore}`);
                             location.reload(); return;
                         }
                     }
@@ -240,22 +253,24 @@
             if (!isPlaying) return;
             requestAnimationFrame(animate);
 
-            // 1. Jiroskop filtresi çalışır (Sadece kafa hamlesini hesaplar)
+            if (isWaitingForCenter) {
+                bird.children[0].material.color.setHex(0x555555); // Kilitliyken gri
+            } else {
+                bird.children[0].material.color.setHex(0xffd700); // Aktifken sarı
+            }
+
             currentX += (targetX - currentX) * filterFactor;
             
-            // 2. RÜZGAR ETKİSİ FİLTRENİN DIŞINDA BİR KUVVET OLARAK DOĞRUDAN POZİSYONA EKLENİR
-            // Rüzgar kuvveti her karede kuşun pozisyonunu bir yöne doğru kaydırır.
-            currentX += currentWindForce;
-
-            // Sınır kontrolleri
             if(currentX > 3.5) currentX = 3.5;
             if(currentX < -3.5) currentX = -3.5;
 
-            // Kuşun nihai X pozisyonu güncellenir
             bird.position.x = currentX;
-            bird.position.y -= dropSpeed; 
+
+            if (!isWaitingForCenter) { bird.position.y -= dropSpeed; } 
+            else { if(bird.position.y > 3.4) bird.position.y -= 0.05; }
 
             scenes[1].getObjectByName("bird").position.copy(bird.position);
+            scenes[1].getObjectByName("bird").children[0].material.color.copy(bird.children[0].material.color);
 
             if (bird.position.y <= -3.2) checkCollisionAndProgress();
 
