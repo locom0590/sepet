@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-    <title>FTR VR - Seviye 1 (Çözüm B: Dinamik Sıfırlama)</title>
+    <title>FTR VR - Seviye 1 (Anasayfa Çözüm A: Zorunlu Merkezleme)</title>
     <style>
         body {
             margin: 0;
@@ -55,9 +55,9 @@
 
     <div id="overlay">
         <h2>Yavru Kuş Kurtarma: Seviye 1</h2>
-        <p><b>ÇÖZÜM B: DİNAMİK SIFIRLAMA AKTİF</b></p>
-        <p>Telefonu YAN ÇEVİRİN (Landscape), düz tutun ve butona basın.</p>
-        <p style="font-size: 14px; color: #bdc3c7;">(Her yeni kuş doğduğunda o anki kafa açınız sıfır noktası kabul edilir)</p>
+        <p><b>ÇÖZÜM A: ZORUNLU MERKEZLEME AKTİF</b></p>
+        <p>Telefonu tam karşınızda dik tutarak YAN ÇEVİRİN (Landscape) ve butona basın.</p>
+        <p style="font-size: 14px; color: #e74c3c; font-weight: bold;">(Her tur başında kafanızı tam dik pozisyona getirene kadar yeni kuş düşmeye başlamaz!)</p>
         <button id="startButton">BAŞLAT VE KALİBRE ET</button>
     </div>
 
@@ -75,22 +75,42 @@
         let targetX = 0;
         let currentX = 0;
         const filterFactor = 0.05; 
-        let gyroCenter = null; // Başlangıçta null yapıyoruz ki her tur başında yeniden kalibre olabilsin
+        let gyroCenter = 0; // İlk kalibrasyondaki mutlak fiziksel merkezimiz
         const sensitivity = 0.12; 
         const deadzone = 1.0; 
 
         const dropSpeed = 0.04; 
+
+        // ÇÖZÜM A DEĞİŞKENLERİ: Kuş serbest mi yoksa merkezleme mi bekleniyor?
+        let isWaitingForCenter = true; 
+        const centerTolerance = 2.0; // Hastanın kafasını merkeze ne kadar yaklaştırması gerektiği (derece)
 
         // Three.js ve VR Değişkenleri
         let scenes = [], cameras = [], renderer;
         let bird, leftNest, rightNest;
         let isPlaying = false;
 
+        // Ses Efekti (Merkeze gelince hastaya geri bildirim vermek için AudioContext)
+        let audioCtx = null;
+
         const overlay = document.getElementById('overlay');
         const startButton = document.getElementById('startButton');
         const vrDivider = document.getElementById('vr-divider');
 
         startButton.addEventListener('click', startOyun);
+
+        function playCenterBeep() {
+            if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            let osc = audioCtx.createOscillator();
+            let gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.frequency.value = 600; // Net bir bip sesi
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            osc.start();
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+            osc.stop(audioCtx.currentTime + 0.15);
+        }
 
         function startOyun() {
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
@@ -179,13 +199,12 @@
             rNest.position.set(2.5, -3.5, 0);
             scene.add(rNest);
 
-            for(let i=0; i<5; i++) {
-                const cloudGeo = new THREE.BoxGeometry(1.5, 0.2, 0.2);
-                const cloudMat = new THREE.MeshBasicMaterial({color: 0x2c3e50, transparent: true, opacity: 0.3});
-                const cloud = new THREE.Mesh(cloudGeo, cloudMat);
-                cloud.position.set(Math.random()*6 - 3, Math.random()*6 - 2, -2);
-                scene.add(cloud);
-            }
+            // Hedef Duraklama Çizgisi (Kuş beklerken duracağı yer için görsel kılavuz)
+            const lineGeo = new THREE.BoxGeometry(7, 0.05, 0.1);
+            const lineMat = new THREE.MeshBasicMaterial({color: 0x34495e});
+            const line = new THREE.Mesh(lineGeo, lineMat);
+            line.position.set(0, 3.3, -0.5);
+            scene.add(line);
 
             return scene;
         }
@@ -196,18 +215,29 @@
             let rawBeta = event.beta; 
             if (rawBeta === null) return;
 
-            // ÇÖZÜM B MERKEZİ: Eğer reset sonrası gyroCenter null ise, 
-            // hastanın O ANKİ güncel eğim açısını yeni sıfır noktası kabul et.
-            if (gyroCenter === null) {
+            // İlk açılışta mutlak fiziksel merkezi kalibre et
+            if (gyroCenter === 0) {
                 gyroCenter = rawBeta;
             }
 
             let relativeAngle = rawBeta - gyroCenter;
 
-            if (Math.abs(relativeAngle) < deadzone) {
-                targetX = 0;
+            // ÇÖZÜM A KONTROLÜ: Eğer merkezleme bekleniyorsa
+            if (isWaitingForCenter) {
+                // Hasta kafasını mutlak merkeze getirdi mi? (Örn: -2 ile +2 derece arasında mı?)
+                if (Math.abs(relativeAngle) <= centerTolerance) {
+                    isWaitingForCenter = false; // Kuşu serbest bırak
+                    playCenterBeep(); // İşitsel geribildirim ver
+                }
+                // Merkez beklerken jiroskop kuşu sağa sola oynatmasın, kuş ortada (0) çakılı beklesin
+                targetX = 0; 
             } else {
-                targetX = relativeAngle * sensitivity;
+                // Kuş serbest bırakıldıysa normal jiroskop takibi yap
+                if (Math.abs(relativeAngle) < deadzone) {
+                    targetX = 0;
+                } else {
+                    targetX = relativeAngle * sensitivity;
+                }
             }
         }
 
@@ -216,10 +246,8 @@
             targetX = 0;
             currentX = 0;
             
-            // CRITICAL ÇÖZÜM B TETİKLEYİCİSİ:
-            // Yeni kuş doğduğu an jiroskop referans merkezini sıfırlıyoruz.
-            // Böylece bir sonraki okumada hastanın kaldığı duruş "yeni merkez" olacak.
-            gyroCenter = null; 
+            // Yeni kuş doğduğunda otomatik olarak kilitle ve hastanın dik pozisyona gelmesini bekle
+            isWaitingForCenter = true; 
         }
 
         function updateNestVisibilities() {
@@ -267,7 +295,7 @@
                             currentStage = 1; 
                         } else {
                             isPlaying = false;
-                            alert(`TEBRİKLER! Seviye 1 bitti.\nToplam kurtarılan kuş: ${totalScore}\nŞimdi Seviye 2'ye geçmeye hazırsınız!`);
+                            alert(`TEBRİKLER!\nZorunlu Merkezleme Seviyesini Bitirdiniz.\nToplam Skor: ${totalScore}`);
                             location.reload();
                             return;
                         }
@@ -284,21 +312,37 @@
 
             requestAnimationFrame(animate);
 
+            // Kuş rengini duruma göre değiştir (Merkezleme beklerken opak/grimsi, düşerken sarı)
+            if (isWaitingForCenter) {
+                bird.children[0].material.color.setHex(0x7f8c8d); // Kilitli: Gri
+            } else {
+                bird.children[0].material.color.setHex(0xf1c40f); // Aktif: Canlı Sarı
+            }
+
             currentX += (targetX - currentX) * filterFactor;
             
             if(currentX > 3.5) currentX = 3.5;
             if(currentX < -3.5) currentX = -3.5;
 
             bird.position.x = currentX;
-            bird.position.y -= dropSpeed;
+
+            // ÇÖZÜM A: Sadece merkezleme şartı tamamlandıysa kuşu aşağı düşür
+            if (!isWaitingForCenter) {
+                bird.position.y -= dropSpeed;
+            } else {
+                // Merkez beklerken kuş yavaşça başlangıç çizgisine süzülüp orada asılı kalır
+                if(bird.position.y > 3.4) bird.position.y -= 0.05;
+            }
 
             scenes[1].getObjectByName("bird").position.copy(bird.position);
+            // Renk senkronu
+            scenes[1].getObjectByName("bird").children[0].material.color.copy(bird.children[0].material.color);
 
             if (bird.position.y <= -3.2) {
                 checkCollisionAndProgress();
             }
 
-            // Çift ekran render (VR)
+            // VR BOX Çift Ekran Render
             renderer.setScissor(0, 0, window.innerWidth / 2, window.innerHeight);
             renderer.setViewport(0, 0, window.innerWidth / 2, window.innerHeight);
             renderer.setScissorTest(true);
