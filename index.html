@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-    <title>FTR VR - Seviye Menüsü ve Kognitif Akış</title>
+    <title>FTR VR - Seviye Menüsü ve İleri Kognitif Akış</title>
     <style>
         body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; user-select: none; }
         #overlay {
@@ -43,7 +43,7 @@
         <label for="levelSelect" style="font-size: 16px; color: #bdc3c7;">Çalışılacak Seviyeyi Seçin:</label>
         <select id="levelSelect">
             <option value="L0">Seviye 0 (Antrenman - Serbest Mod)</option>
-            <option value="L1">Seviye 1 (Kognitif Mod: Stage 0 ➔ 1 ➔ 2)</option>
+            <option value="L1">Seviye 1 (Kognitif Mod: Stage 0'dan 5'e Tüm Akış)</option>
         </select>
 
         <button id="startButton">VR MODUNU BAŞLAT</button>
@@ -51,29 +51,36 @@
 
     <div id="vr-divider"></div>
     
+    <!-- Sol/Sağ Göz Görsel Göstergeleri -->
     <div id="feedback-left" class="feedback-container"></div>
     <div id="feedback-right" class="feedback-container"></div>
 
     <script>
         // --- KLİNİK SEVİYE VE AKIŞ YÖNETİMİ ---
-        let selectedLevel = "L0"; // "L0" veya "L1"
-        let currentStage = 0; // Seviye 1 seçilirse: Stage 0, Stage 1, Stage 2
-        let stageTargetCounts = [5, 5, 5]; 
+        let selectedLevel = "L0"; 
+        let currentStage = 0; // Stage 0, 1, 2, 3, 4, 5
+        let stageTargetCounts = [5, 5, 5, 5, 5, 5]; 
         let stageSuccessCount = 0;
         let totalScore = 0;
 
         // Bilişsel Uyaran Değişkenleri
         let currentBirdColorType = "yellow"; 
+        let initialMemoryColor = "yellow"; // Stage 5 hafıza takibi için
         let glowingNestSide = "left"; 
+        
+        // Stage 3 ve 4 İçin Dinamik Mekanik Elementleri
+        let distractorStars = [];
+        let windDrift = 0;
 
         // Renk Paleti (Kesinleştirilmiş HEX Kodları)
         const COLOR_YELLOW = 0xffd700;
         const COLOR_BLUE = 0x2980b9;
         const COLOR_RED = 0xc0392b;
+        const COLOR_MEMORY_GREY = 0x7f8c8d; // Stage 5 kaybolan renk maskesi
         
         // Stage 0 İçin Parlak ve Sönük Turuncu Tonları
-        const COLOR_BRIGHT_ORANGE = 0xffa500; // Hedef Parlak Turuncu
-        const COLOR_DIM_ORANGE = 0x5e3311;    // Sönük Koyu Turuncu
+        const COLOR_BRIGHT_ORANGE = 0xffa500; 
+        const COLOR_DIM_ORANGE = 0x5e3311;    
 
         // Jiroskop Yapılandırması (Sadece X Ekseni)
         let targetX = 0;
@@ -180,7 +187,7 @@
 
         function startOyun() {
             selectedLevel = levelSelect.value;
-            currentStage = 0; // Seviye 1 seçilirse her zaman Stage 0'dan başlayacak
+            currentStage = 0; 
 
             initAudioEngine();
             startWakeLock();
@@ -220,6 +227,7 @@
             leftNest = scenes[0].getObjectByName("leftNest");
             rightNest = scenes[0].getObjectByName("rightNest");
 
+            setupDistractors();
             updateGameConfigurations();
             resetBirdPosition();
 
@@ -269,6 +277,27 @@
             return scene;
         }
 
+        // Stage 3 Görsel Çeldiricileri Oluşturma
+        function setupDistractors() {
+            distractorStars = [];
+            const starGeo = new THREE.SphereGeometry(0.08, 8, 8);
+            const starMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+            for(let s=0; s<2; s++) { // Her iki göz sahnesi için de oluşturulur
+                let group = new THREE.Group();
+                group.name = "distractorsGroup";
+                for(let i=0; i<8; i++) {
+                    let mesh = new THREE.Mesh(starGeo, starMat);
+                    mesh.position.set((Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6, -1);
+                    mesh.userData = { speedY: 0.02 + Math.random() * 0.03, speedX: (Math.random() - 0.5) * 0.02 };
+                    group.add(mesh);
+                }
+                group.visible = false;
+                scenes[s].add(group);
+                distractorStars.push(group);
+            }
+        }
+
         function handleOrientation(event) {
             if (!isPlaying) return;
             let rawBeta = event.beta; 
@@ -296,53 +325,70 @@
             bird.position.set(0, 4, 0); 
             targetX = 0; currentX = 0;
             isWaitingForCenter = true; 
+            // Stage 4 rüzgar sapmasını sıfırla/yenile
+            windDrift = (Math.random() - 0.5) * 0.025;
         }
 
-        // --- SEVİYE VE AŞAMA RENK AYARLAMALARI ---
+        // --- SEVİYE VE AŞAMA RENK/MEKAN AYARLAMALARI ---
         function updateGameConfigurations() {
             let leftColor = COLOR_BRIGHT_ORANGE;
             let rightColor = COLOR_BRIGHT_ORANGE;
             let birdHex = COLOR_YELLOW;
 
+            // Çeldiricileri gizle (Yalnızca Stage 3'te açılacak)
+            distractorStars.forEach(g => g.visible = false);
+
             if (selectedLevel === "L0") {
-                // SEVİYE 0: Antrenman Modu (Her şey standart, iki sepet de aktif ve turuncu)
                 currentBirdColorType = "yellow";
                 leftColor = COLOR_BRIGHT_ORANGE;
                 rightColor = COLOR_BRIGHT_ORANGE;
             } 
             else if (selectedLevel === "L1") {
-                // SEVİYE 1: Kognitif Akış (Stage 0 -> Stage 1 -> Stage 2)
                 
                 if (currentStage === 0) {
-                    // STAGE 0: Kuş hep sarı düşer. Bir sepet parlak turuncu, diğeri sönük kalır.
                     currentBirdColorType = "yellow";
                     glowingNestSide = Math.random() > 0.5 ? "left" : "right";
-                    
                     leftColor = (glowingNestSide === "left") ? COLOR_BRIGHT_ORANGE : COLOR_DIM_ORANGE;
                     rightColor = (glowingNestSide === "right") ? COLOR_BRIGHT_ORANGE : COLOR_DIM_ORANGE;
                 } 
                 else if (currentStage === 1) {
-                    // STAGE 1: Standart Eşleştirme. Sol Mavi, Sağ Kırmızı. Kuş random mavi/kırmızı.
                     currentBirdColorType = Math.random() > 0.5 ? "blue" : "red";
                     leftColor = COLOR_BLUE;
                     rightColor = COLOR_RED;
                 } 
                 else if (currentStage === 2) {
-                    // STAGE 2 (Simon Efekti): Renk yerleri tersine döner! Sol KIRMIZI, Sağ MAVİ.
                     currentBirdColorType = Math.random() > 0.5 ? "blue" : "red";
+                    leftColor = COLOR_RED;
+                    rightColor = COLOR_BLUE;
+                }
+                else if (currentStage === 3) {
+                    // STAGE 3: Simon Efekti + Görsel Çeldiriciler Aktif
+                    currentBirdColorType = Math.random() > 0.5 ? "blue" : "red";
+                    leftColor = COLOR_RED;
+                    rightColor = COLOR_BLUE;
+                    distractorStars.forEach(g => g.visible = true);
+                }
+                else if (currentStage === 4) {
+                    // STAGE 4: Simon Efekti + Değişken Rüzgar Sapması
+                    currentBirdColorType = Math.random() > 0.5 ? "blue" : "red";
+                    leftColor = COLOR_RED;
+                    rightColor = COLOR_BLUE;
+                }
+                else if (currentStage === 5) {
+                    // STAGE 5: Çalışma Belleği Modu (Renk hafızada tutulacak)
+                    currentBirdColorType = Math.random() > 0.5 ? "blue" : "red";
+                    initialMemoryColor = currentBirdColorType; // İlk rengi sakla
                     leftColor = COLOR_RED;
                     rightColor = COLOR_BLUE;
                 }
             }
 
-            // Kuş rengini güncelle
             if (currentBirdColorType === "blue") birdHex = COLOR_BLUE;
             if (currentBirdColorType === "red") birdHex = COLOR_RED;
 
             bird.children[0].material.color.setHex(birdHex);
             scenes[1].getObjectByName("bird").children[0].material.color.setHex(birdHex);
 
-            // Sepet renklerini güncelle
             leftNest.material.color.setHex(leftColor);
             rightNest.material.color.setHex(rightColor);
             scenes[1].getObjectByName("leftNest").material.color.setHex(leftColor);
@@ -354,25 +400,26 @@
             const finalX = bird.position.x;
 
             if (selectedLevel === "L0") {
-                // Seviye 0'da herhangi bir sepete girmek yeterlidir (Skor artar)
                 if (finalX < -0.8 || finalX > 0.8) hitCorrectNest = true;
             } 
             else if (selectedLevel === "L1") {
-                // Seviye 1 kognitif aşama kontrolleri
                 if (currentStage === 0) {
-                    // Stage 0: Parlayan turuncu sepet kontrolü
                     if (finalX < -0.8 && glowingNestSide === "left") hitCorrectNest = true;
                     if (finalX > 0.8 && glowingNestSide === "right") hitCorrectNest = true;
                 } 
                 else if (currentStage === 1) {
-                    // Stage 1: Sol Mavi, Sağ Kırmızı
                     if (finalX < -0.8 && currentBirdColorType === "blue") hitCorrectNest = true;
                     if (finalX > 0.8 && currentBirdColorType === "red") hitCorrectNest = true;
                 } 
-                else if (currentStage === 2) {
-                    // Stage 2 (Simon Efekti): Mavi sepet sağda, Kırmızı sepet solda!
-                    if (finalX < -0.8 && currentBirdColorType === "red") hitCorrectNest = true;  // Kırmızı için Sol
-                    if (finalX > 0.8 && currentBirdColorType === "blue") hitCorrectNest = true; // Mavi için Sağ
+                // Stage 2, 3 ve 4'ün tamamında Simon Efekti kuralları geçerlidir (Sol Kırmızı, Sağ Mavi)
+                else if (currentStage === 2 || currentStage === 3 || currentStage === 4) {
+                    if (finalX < -0.8 && currentBirdColorType === "red") hitCorrectNest = true;  
+                    if (finalX > 0.8 && currentBirdColorType === "blue") hitCorrectNest = true; 
+                }
+                else if (currentStage === 5) {
+                    // Stage 5: Hafızadaki ilk renge göre Simon kontrolü yapılır
+                    if (finalX < -0.8 && initialMemoryColor === "red") hitCorrectNest = true;
+                    if (finalX > 0.8 && initialMemoryColor === "blue") hitCorrectNest = true;
                 }
             }
 
@@ -380,18 +427,16 @@
 
             if (hitCorrectNest) {
                 totalScore++;
-                
-                // Sadece Seviye 1'de aşama (Stage) ilerlemesi vardır
                 if (selectedLevel === "L1") {
                     stageSuccessCount++;
                     if (stageSuccessCount >= stageTargetCounts[currentStage]) {
                         stageSuccessCount = 0; 
-                        currentStage++; // Bir sonraki aşamaya geç (Stage 0 -> Stage 1 -> Stage 2)
+                        currentStage++; 
                         
-                        if (currentStage > 2) {
+                        if (currentStage > 5) { // 0'dan 5'e kadar tüm aşamalar bittiğinde
                             isPlaying = false;
                             if (wakeLock !== null) { wakeLock.release(); wakeLock = null; }
-                            alert(`TEBRİKLER!\nSeviye 1'deki tüm kognitif aşamaları (Simon Efekti dahil) tamamladınız.\nToplam Skor: ${totalScore}`);
+                            alert(`MÜKEMMEL BAŞARI!\nSeviye 1'deki tüm ileri düzey kognitif aşamaları başarıyla tamamladınız.\nToplam Skor: ${totalScore}`);
                             location.reload(); return;
                         }
                     }
@@ -405,18 +450,42 @@
             if (!isPlaying) return;
             requestAnimationFrame(animate);
 
-            // Merkez kilit görsel uyarısı
+            // Merkez kilidi görsel uyarısı ve Renk Körleme (Stage 5 Maskeleme) mekanizması
             if (isWaitingForCenter) {
                 bird.children[0].material.color.setHex(0x555555); 
             } else {
-                let birdHex = COLOR_YELLOW;
-                if (currentBirdColorType === "blue") birdHex = COLOR_BLUE;
-                if (currentBirdColorType === "red") birdHex = COLOR_RED;
-                bird.children[0].material.color.setHex(birdHex); 
+                if (selectedLevel === "L1" && currentStage === 5) {
+                    // Stage 5: Kilit açıldığı an kuşun rengi hafıza için griye döner!
+                    bird.children[0].material.color.setHex(COLOR_MEMORY_GREY);
+                } else {
+                    let birdHex = COLOR_YELLOW;
+                    if (currentBirdColorType === "blue") birdHex = COLOR_BLUE;
+                    if (currentBirdColorType === "red") birdHex = COLOR_RED;
+                    bird.children[0].material.color.setHex(birdHex); 
+                }
+            }
+
+            // Stage 3: Çeldirici Yıldızların Animasyonu
+            if (selectedLevel === "L1" && currentStage === 3 && !isWaitingForCenter) {
+                distractorStars.forEach(group => {
+                    group.children.forEach(star => {
+                        star.position.y -= star.userData.speedY;
+                        star.position.x += star.userData.speedX;
+                        if(star.position.y < -4) {
+                            star.position.y = 4;
+                            star.position.x = (Math.random() - 0.5) * 6;
+                        }
+                    });
+                });
             }
 
             currentX += (targetX - currentX) * filterFactor;
             
+            // Stage 4: Değişken Motor Direnci (Rüzgar Sapması Uygulaması)
+            if (selectedLevel === "L1" && currentStage === 4 && !isWaitingForCenter) {
+                currentX += windDrift;
+            }
+
             if(currentX > 3.5) currentX = 3.5;
             if(currentX < -3.5) currentX = -3.5;
 
