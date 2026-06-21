@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-    <title>FTR VR - Seviye 1 (Ağır Sinematik ve Geri Bildirimli Mod)</title>
+    <title>FTR VR - Seviye 1 (Hassasiyet, Ses ve Ekran Kilit Güncellemesi)</title>
     <style>
         body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; user-select: none; }
         #overlay {
@@ -17,7 +17,7 @@
         }
         #vr-divider { position: absolute; left: 50%; top: 0; width: 2px; height: 100%; background-color: rgba(255,255,255,0.15); z-index: 5; display: none; }
         
-        /* Çift Ekran İçin Görsel Geri Bildirim Göstergeleri */
+        /* Çift Ekran Görsel Geri Bildirim Göstergeleri */
         .feedback-container {
             position: absolute; top: 50%; transform: translateY(-50%);
             width: 50%; height: 200px; display: none; justify-content: center; align-items: center;
@@ -34,10 +34,10 @@
 
     <div id="overlay">
         <h2>Yavru Kuş Kurtarma: Seviye 1</h2>
-        <p><b>SİNEMATİK VE GERİ BİLDİRİMLİ KLİNİK MOD</b></p>
+        <p><b>HASSASİYET, SES VE EKRAN KİLİT GÜNCELLEMESİ</b></p>
         <p>Telefonu tam karşınızda dik tutarak YAN ÇEVİRİN ve butona basın.</p>
-        <p style="font-size: 14px; color: #3498db; font-weight: bold;">
-            (Düşüş hızı yarıya indirildi, süzülme yumuşatıldı. Başarı durumunda sesli ve görsel bildirim tetiklenir.)
+        <p style="font-size: 14px; color: #f1c40f; font-weight: bold;">
+            (Sakkadik titremeleri engellemek için jiroskop hassasiyeti düşürülmüştür.)
         </p>
         <button id="startButton">VR MODUNU BAŞLAT</button>
     </div>
@@ -55,25 +55,27 @@
         let loopCounter = 1; 
         let totalScore = 0;
 
-        // Jiroskop Filtreleme Değişkenleri (Sinematik Ağırlaştırma)
+        // Jiroskop Filtreleme Değişkenleri
         let targetX = 0;
         let currentX = 0;
-        const filterFactor = 0.02; // 0.05'ten 0.02'ye düşürüldü (Çok daha pürüzsüz ve ağır)
+        const filterFactor = 0.02; // Ağır ve pürüzsüz sinematik süzülme
         
         let gyroCenterBeta = null;  
-        const sensitivity = 0.15; 
+        
+        // Sakkad Engelleme Güncellemesi
+        const sensitivity = 0.08; // Hassasiyet 0.15'ten 0.08'e düşürüldü (Mikro titremeler elendi)
         const deadzone = 1.0; 
         
-        // Düşüş Hızı (Yarıya Düşürüldü)
-        const dropSpeed = 0.02; // 0.04'ten 0.02'ye indirildi
+        // Hız Güncellemesi
+        const dropSpeed = 0.02; // Yarı yarıya yavaş düşüş hızı korundu
 
         let isWaitingForCenter = true; 
         const centerTolerance = 5.0; 
 
-        // VR Kamera Ayarları (Toe-in 3D Derinlik)
+        // VR Kamera Ayarları
         const ipd = 0.15; 
 
-        // Three.js Değişkenleri
+        // Three.js ve Sistem Değişkenleri
         let scenes = [], cameras = [], renderer;
         let bird, leftNest, rightNest;
         let isPlaying = false;
@@ -88,44 +90,53 @@
 
         startButton.addEventListener('click', startOyun);
 
-        // --- TELİFSİZ VE BAĞIMSIZ SES MOTORU (Web Audio API) ---
+        // --- SES MOTORU AKTİVASYONU VE SESLER ---
+        function initAudioEngine() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume(); // Kullanıcı gesture anında ses motorunu kesin olarak uyandır
+            }
+        }
+
         function playSound(type) {
-            if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (!audioCtx) return;
             
             if (type === 'center') {
-                // Merkez kilit açılma sesi (Hafif klik)
+                // Merkez kilit açılma klik sesi
                 let osc = audioCtx.createOscillator(); let gain = audioCtx.createGain();
                 osc.connect(gain); gain.connect(audioCtx.destination);
-                osc.frequency.value = 600; gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
-                osc.start(); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.12);
-                osc.stop(audioCtx.currentTime + 0.12);
+                osc.frequency.value = 550; gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                osc.start(); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+                osc.stop(audioCtx.currentTime + 0.1);
             } 
             else if (type === 'success') {
-                // Pozitif Başarı Melodisi (Çift Tonlu Neşeli Ses)
+                // Pozitif Başarı Melodisi (Net çift ton)
                 let now = audioCtx.currentTime;
                 let osc1 = audioCtx.createOscillator(); let gain1 = audioCtx.createGain();
                 osc1.connect(gain1); gain1.connect(audioCtx.destination);
                 osc1.frequency.setValueAtTime(523.25, now); // C5 notası
-                osc1.frequency.setValueAtTime(659.25, now + 0.1); // E5 notası
-                gain1.gain.setValueAtTime(0.15, now);
-                gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
-                osc1.start(now); osc1.stop(now + 0.3);
+                osc1.frequency.setValueAtTime(659.25, now + 0.08); // E5 notası
+                gain1.gain.setValueAtTime(0.2, now);
+                gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+                osc1.start(now); osc1.stop(now + 0.35);
             } 
             else if (type === 'fail') {
-                // Başarısızlık Sesi (Kalın Uyarı Tonu)
+                // Başarısızlık Uyarı Sesi (Kalın bas tonu)
                 let now = audioCtx.currentTime;
                 let osc = audioCtx.createOscillator(); let gain = audioCtx.createGain();
-                osc.type = 'sawtooth'; // Daha belirgin bir uyarı için testere dişi dalga
+                osc.type = 'sawtooth'; 
                 osc.connect(gain); gain.connect(audioCtx.destination);
-                osc.frequency.setValueAtTime(180, now); // Kalın pes ses
-                osc.frequency.linearRampToValueAtTime(120, now + 0.25);
-                gain.gain.setValueAtTime(0.12, now);
-                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
-                osc.start(now); osc.stop(now + 0.3);
+                osc.frequency.setValueAtTime(160, now); 
+                osc.frequency.linearRampToValueAtTime(100, now + 0.3);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+                osc.start(now); osc.stop(now + 0.35);
             }
         }
 
-        // --- GÖRSEL GERİ BİLDİRİM TETİKLEYİCİSİ ---
+        // --- GÖRSEL GERİ BİLDİRİM ---
         function triggerVisualFeedback(isSuccess) {
             if (isSuccess) {
                 fbLeft.innerHTML = '<span class="success-tick">&#10004;</span>';
@@ -140,23 +151,32 @@
             fbLeft.style.display = 'flex';
             fbRight.style.display = 'flex';
 
-            // 500ms (0.5 saniye) sonra ekrandan temizle
             setTimeout(() => {
                 fbLeft.style.display = 'none';
                 fbRight.style.display = 'none';
             }, 500);
         }
 
-        async function requestScreenHandling() {
-            const docEl = document.documentElement;
-            if (docEl.requestFullscreen) { docEl.requestFullscreen(); }
+        // --- EKRAN KAPANMA ENGELLEYİCİSİ ---
+        async function startWakeLock() {
             if ('wakeLock' in navigator) {
-                try { wakeLock = await navigator.wakeLock.request('screen'); } catch (err) { console.log(err); }
+                try { 
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    console.log("Wake Lock aktif: Ekran kararmayacak.");
+                } catch (err) { 
+                    console.log("Wake lock hatası:", err); 
+                }
             }
         }
 
         function startOyun() {
-            requestScreenHandling();
+            // Tarayıcı kuralları gereği en üst katmanda tetikleme
+            initAudioEngine();
+            startWakeLock();
+            
+            const docEl = document.documentElement;
+            if (docEl.requestFullscreen) { docEl.requestFullscreen(); }
+
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 DeviceOrientationEvent.requestPermission()
                     .then(permissionState => { if (permissionState === 'granted') { initGame(); } })
@@ -283,12 +303,10 @@
         function checkCollisionAndProgress() {
             let hitCorrectNest = false;
             
-            // X koordinat tolerans kontrolü
             if (bird.position.x > 0.8 && rightNest.visible) hitCorrectNest = true; 
             else if (bird.position.x < -0.8 && leftNest.visible) hitCorrectNest = true; 
             else if (currentStage === 0 && (bird.position.x > 0.8 || bird.position.x < -0.8)) hitCorrectNest = true; 
 
-            // Geri bildirim sistemini tetikle
             triggerVisualFeedback(hitCorrectNest);
 
             if (hitCorrectNest) {
@@ -319,7 +337,6 @@
                 bird.children[0].material.color.setHex(0xffd700); 
             }
 
-            // Ağırlaştırılmış pürüzsüz geçiş filtresi
             currentX += (targetX - currentX) * filterFactor;
             
             if(currentX > 3.5) currentX = 3.5;
@@ -335,13 +352,11 @@
 
             if (bird.position.y <= -3.2) checkCollisionAndProgress();
 
-            // Sol Göz Render
             renderer.setScissor(0, 0, window.innerWidth / 2, window.innerHeight);
             renderer.setViewport(0, 0, window.innerWidth / 2, window.innerHeight);
             renderer.setScissorTest(true);
             renderer.render(scenes[0], cameras[0]);
 
-            // Sağ Göz Render
             renderer.setScissor(window.innerWidth / 2, 0, window.innerWidth / 2, window.innerHeight);
             renderer.setViewport(window.innerWidth / 2, 0, window.innerWidth / 2, window.innerHeight);
             renderer.setScissorTest(true);
