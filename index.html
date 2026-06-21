@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-    <title>FTR VR - Seviye 1 (3D Küresel Merkezleme Modu)</title>
+    <title>FTR VR - Seviye 1 (Fleksiyon/Ekstansiyon Serbest Mod)</title>
     <style>
         body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
         #overlay {
@@ -23,10 +23,10 @@
 
     <div id="overlay">
         <h2>Yavru Kuş Kurtarma: Seviye 1</h2>
-        <p><b>ÇÖZÜM A: 3D KÜRESEL MERKEZLEME</b></p>
+        <p><b>ÇÖZÜM A: SAĞ-SOL ODAKLI MERKEZLEME</b></p>
         <p>Telefonu tam karşınızda dik tutarak YAN ÇEVİRİN ve butona basın.</p>
-        <p style="font-size: 14px; color: #2ecc71; font-weight: bold;">
-            (Başınızı öne/arkaya veya sağa/sola eğmiş olsanız bile, ilk dik pozisyona ±5 derece yaklaştığınızda kilit açılır!)
+        <p style="font-size: 14px; color: #f1c40f; font-weight: bold;">
+            (Öne ve arkaya eğilmeler tamamen serbesttir. Kilit sadece sağa/sola dikleştiğinizde (±5 derece) açılır!)
         </p>
         <button id="startButton">VR MODUNU BAŞLAT</button>
     </div>
@@ -46,16 +46,15 @@
         let currentX = 0;
         const filterFactor = 0.05; 
         
-        // --- 3D KÜRESEL MERKEZLEME DEĞİŞKENLERİ ---
-        let gyroCenterBeta = null;  // İlk kalibrasyondaki sağa/sola yatış merkezi
-        let gyroCenterGamma = null; // İlk kalibrasyondaki öne/arkaya eğilme merkezi
+        // --- TEK EKSENLİ SEÇİCİ KALİBRASYON ---
+        let gyroCenterBeta = null;  // Sadece sağa/sola yatış merkezi baz alınacak
         
         const sensitivity = 0.15; 
         const deadzone = 1.0; 
         const dropSpeed = 0.04; 
 
         let isWaitingForCenter = true; 
-        const centerTolerance = 5.0; // 3D uzaydaki küresel tolerans yarıçapı (5 derece)
+        const centerTolerance = 5.0; // Sadece sağa/sola ±5 derece tolerans
 
         // VR Kamera Ayarları (Toe-in 3D Derinlik)
         const ipd = 0.15; 
@@ -188,27 +187,20 @@
         function handleOrientation(event) {
             if (!isPlaying) return;
             
-            let rawBeta = event.beta; 
-            let rawGamma = event.gamma; 
-            if (rawBeta === null || rawGamma === null) return;
+            let rawBeta = event.beta; // Sadece sağa-sola lateral fleksiyonu dinliyoruz
+            if (rawBeta === null) return;
 
-            // İlk açılışta 2 eksenli mutlak fiziksel merkezi kilitliyoruz
-            if (gyroCenterBeta === null || gyroCenterGamma === null) {
+            // İlk kalibrasyon merkezi (Öne/arkaya bakan gamma tamamen elendi)
+            if (gyroCenterBeta === null) {
                 gyroCenterBeta = rawBeta;
-                gyroCenterGamma = rawGamma;
             }
 
-            // Sapma miktarlarını hesapla
+            // Merkezden sağa veya sola kaç derece saptığını bul
             let deltaBeta = rawBeta - gyroCenterBeta;
-            let deltaGamma = rawGamma - gyroCenterGamma;
-
-            // --- PİSAGOR İLE KÜRESEL UZAKLIK HESAPLAMA ---
-            // Hastanın kafa açısı hem fleksiyon/ekstansiyon hem lateral fleksiyon yönünden merkeze oranlanıyor
-            let angularDistance = Math.sqrt(deltaBeta * deltaBeta + deltaGamma * deltaGamma);
 
             if (isWaitingForCenter) {
-                // Hasta kafa duruşunu her iki eksende de nötr konuma getirdi mi?
-                if (angularDistance <= centerTolerance) {
+                // Öne-arkaya eğilme ne olursa olsun, sağ-sol sapması 5 derecenin altına indiği an kilit açılır
+                if (Math.abs(deltaBeta) <= centerTolerance) {
                     isWaitingForCenter = false; 
                     playCenterBeep(); 
                 }
@@ -269,9 +261,9 @@
             requestAnimationFrame(animate);
 
             if (isWaitingForCenter) {
-                bird.children[0].material.color.setHex(0x555555); // Kilitli: Gri
+                bird.children[0].material.color.setHex(0x555555); 
             } else {
-                bird.children[0].material.color.setHex(0xffd700); // Aktif: Parlak Sarı
+                bird.children[0].material.color.setHex(0xffd700); 
             }
 
             currentX += (targetX - currentX) * filterFactor;
