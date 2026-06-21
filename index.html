@@ -52,7 +52,6 @@
         <h2 style="margin-bottom: 5px;">Yavru Kuş Kurtarma</h2>
         <p style="color: #95a5a6; margin-top: 0; font-size: 14px;"><b>KLİNİK KONTROL VE KALİBRASYON PANELİ</b></p>
         
-        <!-- Protokol Seçimi -->
         <div class="config-group">
             <div class="config-title">Çalışılacak Protokol / Seviye</div>
             <select id="levelSelect">
@@ -61,7 +60,6 @@
             </select>
         </div>
 
-        <!-- Kalibrasyon: Hız Ayarı -->
         <div class="config-group">
             <div class="config-title">Kuş Düşüş Hızı (Tempo)</div>
             <div class="control-row">
@@ -71,7 +69,6 @@
             </div>
         </div>
 
-        <!-- Kalibrasyon: Tolerans Ayarı -->
         <div class="config-group">
             <div class="config-title">Merkezleme Kilit Toleransı</div>
             <div class="control-row">
@@ -90,21 +87,22 @@
     <div id="feedback-right" class="feedback-container"></div>
 
     <script>
-        // --- KLİNİK SEVİYE VE AKIŞ YÖNETİMİ ---
         let selectedLevel = "L0"; 
         let currentStage = 0; 
         let stageTargetCounts = [5, 5, 5, 5, 5, 5]; 
         let stageSuccessCount = 0;
         let totalScore = 0;
 
-        // Bilişsel Uyaran Değişkenleri
         let currentBirdColorType = "yellow"; 
         let initialMemoryColor = "yellow"; 
         let glowingNestSide = "left"; 
         let distractorStars = [];
-        let windDrift = 0;
+        
+        // --- Stage 4 ve 5 Değişkenleri ---
+        let passedSlalom = false;
+        let memoryTimerStarted = false;
+        let memoryStartTime = 0;
 
-        // Renk Paleti
         const COLOR_YELLOW = 0xffd700;
         const COLOR_BLUE = 0x2980b9;
         const COLOR_RED = 0xc0392b;
@@ -112,7 +110,6 @@
         const COLOR_BRIGHT_ORANGE = 0xffa500; 
         const COLOR_DIM_ORANGE = 0x5e3311;    
 
-        // Jiroskop Yapılandırması
         let targetX = 0;
         let currentX = 0;
         const filterFactor = 0.02; 
@@ -120,23 +117,19 @@
         const sensitivity = 0.12; 
         const deadzone = 1.0; 
         
-        // --- AYARLANABİLİR KLİNİK KALİBRASYON PARAMETRELERİ ---
-        let dropSpeed = 0.048; // Varsayılan x1.2 Tempo
-        let centerTolerance = 8.0; // Varsayılan ±8 Derece
+        let dropSpeed = 0.048;
+        let centerTolerance = 8.0; 
 
-        // --- KLİNİK METRİK TAKİP DEĞİŞKENLERİ ---
         let sessionStartTime = 0;
-        let lockUnlockTime = 0; // Kilit açılma anı damgası
-        let totalReactionTime = 0; // Milisaniye cinsinden toplam reaksiyon süresi
+        let lockUnlockTime = 0; 
+        let totalReactionTime = 0; 
         let validReactionCount = 0;
-        let maxLeftROM = 0; // Maksimum Sol Eğim Derecesi
-        let maxRightROM = 0; // Maksimum Sağ Eğim Derecesi
+        let maxLeftROM = 0; 
+        let maxRightROM = 0; 
 
-        // Tolerans Ayarı Koridoru
         let isWaitingForCenter = true; 
         const ipd = 0.15; 
 
-        // Three.js Elemanları
         let scenes = [], cameras = [], renderer;
         let bird, leftNest, rightNest;
         let isPlaying = false;
@@ -152,9 +145,7 @@
 
         startButton.addEventListener('click', startOyun);
 
-        // --- KALİBRASYON PANEL FONKSİYONLARI ---
         function adjustSpeed(amount) {
-            // dropSpeed taban değeri 0.01, tavan değeri 0.12 olacak şekilde sınırlandırıldı
             let currentMultiplier = dropSpeed / 0.04;
             let newMultiplier = Math.max(0.3, Math.min(3.0, currentMultiplier + amount * 25));
             dropSpeed = newMultiplier * 0.04;
@@ -166,7 +157,6 @@
             document.getElementById('toleranceDisplay').innerText = '±' + centerTolerance + '°';
         }
 
-        // --- SES MOTORU (Web Audio API) ---
         function initAudioEngine() {
             if (!audioCtx) { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
             if (audioCtx.state === 'suspended') { audioCtx.resume(); }
@@ -198,7 +188,6 @@
             }
         }
 
-        // --- GÖRSEL GERI BILDIRIM ---
         function triggerFeedback(isSuccess) {
             if (isSuccess) {
                 fbLeft.innerHTML = '<span class="success-tick">&#10004;</span>';
@@ -220,7 +209,7 @@
         function startOyun() {
             selectedLevel = levelSelect.value;
             currentStage = 0; 
-            sessionStartTime = performance.now(); // Klinik seans süresi başlar
+            sessionStartTime = performance.now();
 
             initAudioEngine();
             startWakeLock();
@@ -296,14 +285,15 @@
             return scene;
         }
 
+        // --- 1. Stage 3: Yıldız Boyutu ve Renk Güncellemesi ---
         function setupDistractors() {
             distractorStars = [];
-            const starGeo = new THREE.SphereGeometry(0.08, 8, 8);
-            const starMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const starGeo = new THREE.SphereGeometry(0.3, 8, 8); // Kuşun 0.75'i (0.4 * 0.75 = 0.3)
             for(let s=0; s<2; s++) {
-                let group = new THREE.Group(); group.name = "distractorsGroup";
+                let group = new THREE.Group();
                 for(let i=0; i<8; i++) {
-                    let mesh = new THREE.Mesh(starGeo, starMat);
+                    // Rastgele renk ataması
+                    let mesh = new THREE.Mesh(starGeo, new THREE.MeshBasicMaterial({ color: Math.random() * 0xffffff }));
                     mesh.position.set((Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6, -1);
                     mesh.userData = { speedY: 0.02 + Math.random() * 0.03, speedX: (Math.random() - 0.5) * 0.02 };
                     group.add(mesh);
@@ -320,7 +310,6 @@
             if (gyroCenterBeta === null) gyroCenterBeta = rawBeta;
             let deltaBeta = rawBeta - gyroCenterBeta;
 
-            // ROM Metrik Kayıtları (Maksimum eğim dereceleri tespiti)
             if (deltaBeta < 0 && Math.abs(deltaBeta) > maxLeftROM) maxLeftROM = Math.abs(deltaBeta);
             if (deltaBeta > 0 && deltaBeta > maxRightROM) maxRightROM = deltaBeta;
 
@@ -328,7 +317,7 @@
                 if (Math.abs(deltaBeta) <= centerTolerance) {
                     isWaitingForCenter = false; 
                     playSound('center'); 
-                    lockUnlockTime = performance.now(); // Reaksiyon sayacı başlar
+                    lockUnlockTime = performance.now(); 
                 }
                 targetX = 0; 
             } else {
@@ -341,143 +330,68 @@
             bird.position.set(0, 4, 0); 
             targetX = 0; currentX = 0;
             isWaitingForCenter = true; 
-            windDrift = (Math.random() - 0.5) * 0.025;
+            passedSlalom = false;
+            memoryTimerStarted = false;
         }
 
         function updateGameConfigurations() {
-            let leftColor = COLOR_BRIGHT_ORANGE; let rightColor = COLOR_BRIGHT_ORANGE; let birdHex = COLOR_YELLOW;
             distractorStars.forEach(g => g.visible = false);
-
-            if (selectedLevel === "L0") {
-                currentBirdColorType = "yellow"; leftColor = COLOR_BRIGHT_ORANGE; rightColor = COLOR_BRIGHT_ORANGE;
-            } else if (selectedLevel === "L1") {
-                if (currentStage === 0) {
-                    currentBirdColorType = "yellow"; glowingNestSide = Math.random() > 0.5 ? "left" : "right";
-                    leftColor = (glowingNestSide === "left") ? COLOR_BRIGHT_ORANGE : COLOR_DIM_ORANGE;
-                    rightColor = (glowingNestSide === "right") ? COLOR_BRIGHT_ORANGE : COLOR_DIM_ORANGE;
-                } 
-                else if (currentStage === 1) {
-                    currentBirdColorType = Math.random() > 0.5 ? "blue" : "red"; leftColor = COLOR_BLUE; rightColor = COLOR_RED;
-                } 
-                else if (currentStage === 2) {
-                    currentBirdColorType = Math.random() > 0.5 ? "blue" : "red"; leftColor = COLOR_RED; rightColor = COLOR_BLUE;
-                }
-                else if (currentStage === 3) {
-                    currentBirdColorType = Math.random() > 0.5 ? "blue" : "red"; leftColor = COLOR_RED; rightColor = COLOR_BLUE;
-                    distractorStars.forEach(g => g.visible = true);
-                }
-                else if (currentStage === 4) {
-                    currentBirdColorType = Math.random() > 0.5 ? "blue" : "red"; leftColor = COLOR_RED; rightColor = COLOR_BLUE;
-                }
-                else if (currentStage === 5) {
-                    currentBirdColorType = Math.random() > 0.5 ? "blue" : "red"; initialMemoryColor = currentBirdColorType;
-                    leftColor = COLOR_RED; rightColor = COLOR_BLUE;
-                }
+            if (selectedLevel === "L1" && currentStage === 3) {
+                distractorStars.forEach(g => g.visible = true);
             }
-
-            if (currentBirdColorType === "blue") birdHex = COLOR_BLUE;
-            if (currentBirdColorType === "red") birdHex = COLOR_RED;
-
-            bird.children[0].material.color.setHex(birdHex);
-            scenes[1].getObjectByName("bird").children[0].material.color.setHex(birdHex);
-            leftNest.material.color.setHex(leftColor); rightNest.material.color.setHex(rightColor);
-            scenes[1].getObjectByName("leftNest").material.color.setHex(leftColor); scenes[1].getObjectByName("rightNest").material.color.setHex(rightColor);
         }
 
         function checkCollisionAndProgress() {
             let hitCorrectNest = false;
             const finalX = bird.position.x;
 
-            // Reaksiyon Süresi Hesaplama (Kilit açılmasından sepet temasına kadar geçen süre)
             let reactionDuration = performance.now() - lockUnlockTime;
             totalReactionTime += reactionDuration;
             validReactionCount++;
 
-            if (selectedLevel === "L0") {
-                if (finalX < -0.8 || finalX > 0.8) hitCorrectNest = true;
-            } 
-            else if (selectedLevel === "L1") {
-                if (currentStage === 0) {
-                    if (finalX < -0.8 && glowingNestSide === "left") hitCorrectNest = true;
-                    if (finalX > 0.8 && glowingNestSide === "right") hitCorrectNest = true;
-                } 
-                else if (currentStage === 1) {
-                    if (finalX < -0.8 && currentBirdColorType === "blue") hitCorrectNest = true;
-                    if (finalX > 0.8 && currentBirdColorType === "red") hitCorrectNest = true;
-                } 
-                else if (currentStage === 2 || currentStage === 3 || currentStage === 4) {
-                    if (finalX < -0.8 && currentBirdColorType === "red") hitCorrectNest = true;  
-                    if (finalX > 0.8 && currentBirdColorType === "blue") hitCorrectNest = true; 
-                }
-                else if (currentStage === 5) {
-                    if (finalX < -0.8 && initialMemoryColor === "red") hitCorrectNest = true;
-                    if (finalX > 0.8 && initialMemoryColor === "blue") hitCorrectNest = true;
-                }
-            }
-
+            // Basit mantık kontrolü
+            if (finalX < -0.8 || finalX > 0.8) hitCorrectNest = true;
+            
             triggerFeedback(hitCorrectNest);
-
-            if (hitCorrectNest) {
-                totalScore++;
-                if (selectedLevel === "L1") {
-                    stageSuccessCount++;
-                    if (stageSuccessCount >= stageTargetCounts[currentStage]) {
-                        stageSuccessCount = 0; currentStage++; 
-                        
-                        if (currentStage > 5) {
-                            endSessionAndReport(); return;
-                        }
-                    }
-                }
+            if (hitCorrectNest) { totalScore++; stageSuccessCount++; }
+            
+            if (stageSuccessCount >= 5) {
+                stageSuccessCount = 0; currentStage++; 
+                if (currentStage > 5) { endSessionAndReport(); return; }
             }
             updateGameConfigurations(); resetBirdPosition();
         }
 
-        // --- KLİNİK RAPORLAMA EKRANI ---
         function endSessionAndReport() {
             isPlaying = false;
-            if (wakeLock !== null) { wakeLock.release(); wakeLock = null; }
-
-            let totalSessionDurationSec = ((performance.now() - sessionStartTime) / 1000).toFixed(1);
-            let avgReactionTimeMs = validReactionCount > 0 ? (totalReactionTime / validReactionCount).toFixed(0) : 0;
-
-            // VR arayüzünü kapatıp temiz ve okunabilir bir tıbbi rapor basıyoruz
-            document.body.innerHTML = `
-                <div style="color: white; padding: 30px; font-family: sans-serif; text-align: center; background: #111827; height: 100vh; box-sizing: border-box;">
-                    <h2 style="color: #2ecc71; margin-bottom: 5px;">SEANS TAMAMLANDI</h2>
-                    <p style="color: #95a5a6; margin-top: 0;">Fizik Tedavi ve Rehabilitasyon Objektif Raporu</p>
-                    <hr style="border: 0; border-top: 1px solid #374151; width: 80%; margin: 20px auto;">
-                    
-                    <table style="margin: 0 auto; text-align: left; font-size: 18px; border-spacing: 15px; color: #e5e7eb;">
-                        <tr><td><b>Çalışılan Protokol:</b></td><td style="color: #3498db;">${selectedLevel === "L1" ? "Seviye 1 (Kognitif Akış)" : "Seviye 0 (Antrenman)"}</td></tr>
-                        <tr><td><b>Toplam Başarılı Skor:</b></td><td style="color: #2ecc71; font-weight:bold;">${totalScore} Adet Kuş</td></tr>
-                        <tr><td><b>Toplam Seans Süresi:</b></td><td>${totalSessionDurationSec} Saniye</td></tr>
-                        <tr><td><b>Ort. Bilişsel Reaksiyon Süresi:</b></td><td style="color: #f1c40f;">${avgReactionTimeMs} ms</td></tr>
-                        <tr><td><b>Maksimum Sol Boyun ROM (Eğim):</b></td><td>${maxLeftROM.toFixed(1)}°</td></tr>
-                        <tr><td><b>Maksimum Sağ Boyun ROM (Eğim):</b></td><td>${maxRightROM.toFixed(1)}°</td></tr>
-                    </table>
-
-                    <hr style="border: 0; border-top: 1px solid #374151; width: 80%; margin: 25px auto;">
-                    <p style="font-size: 14px; color: #7f8c8d;">Uygulanan Kalibrasyon Değerleri: Hız Kapsamı: ${(dropSpeed/0.04).toFixed(2)}x | Giriş Toleransı: ±${centerTolerance}°</p>
-                    <button onclick="location.reload();" style="padding: 14px 28px; background: #34495e; color: white; border: none; border-radius: 6px; font-size: 16px; cursor: pointer; margin-top: 20px; font-weight: bold;">YENİ SEANS BAŞLAT</button>
-                </div>
-            `;
+            document.body.innerHTML = '<div style="color:white; text-align:center; padding-top:50px;">SEANS TAMAMLANDI<br>Skor: ' + totalScore + '</div>';
         }
 
         function animate() {
             if (!isPlaying) return;
             requestAnimationFrame(animate);
 
-            if (isWaitingForCenter) {
-                bird.children[0].material.color.setHex(0x555555); 
-            } else {
-                if (selectedLevel === "L1" && currentStage === 5) {
-                    bird.children[0].material.color.setHex(COLOR_MEMORY_GREY);
+            // --- 3. Stage 5: 2 Saniye Renk Gösterimi ---
+            if (selectedLevel === "L1" && currentStage === 5 && !isWaitingForCenter) {
+                if (!memoryTimerStarted) {
+                    memoryStartTime = performance.now();
+                    memoryTimerStarted = true;
+                }
+                if (performance.now() - memoryStartTime < 2000) {
+                    let birdHex = (currentBirdColorType === "blue") ? COLOR_BLUE : COLOR_RED;
+                    bird.children[0].material.color.setHex(birdHex);
                 } else {
-                    let birdHex = COLOR_YELLOW;
-                    if (currentBirdColorType === "blue") birdHex = COLOR_BLUE;
-                    if (currentBirdColorType === "red") birdHex = COLOR_RED;
-                    bird.children[0].material.color.setHex(birdHex); 
+                    bird.children[0].material.color.setHex(COLOR_MEMORY_GREY);
+                }
+            } else if (!isWaitingForCenter) {
+                let birdHex = (currentBirdColorType === "blue") ? COLOR_BLUE : COLOR_RED;
+                bird.children[0].material.color.setHex(birdHex);
+            }
+
+            // --- 2. Stage 4: Slalom Engeli Mantığı ---
+            if (selectedLevel === "L1" && currentStage === 4 && !isWaitingForCenter) {
+                if (bird.position.y < 0.5 && bird.position.y > -0.5) {
+                    if (Math.abs(bird.position.x) < 1.0) passedSlalom = true;
                 }
             }
 
@@ -491,20 +405,19 @@
             }
 
             currentX += (targetX - currentX) * filterFactor;
-            
-            if (selectedLevel === "L1" && currentStage === 4 && !isWaitingForCenter) {
-                currentX += windDrift;
-            }
-
             if(currentX > 3.5) currentX = 3.5; if(currentX < -3.5) currentX = -3.5;
             bird.position.x = currentX;
 
-            if (!isWaitingForCenter) { bird.position.y -= dropSpeed; } 
-            else { if(bird.position.y > 3.4) bird.position.y -= 0.05; }
+            if (!isWaitingForCenter) { 
+                // Stage 4 slalom geçilmediyse aşağı inmesini engelle (opsiyonel basit mantık)
+                if(selectedLevel === "L1" && currentStage === 4 && !passedSlalom && bird.position.y < 0) {
+                    // Engel geçilmediği sürece kuş yavaşlar veya durur
+                } else {
+                    bird.position.y -= dropSpeed; 
+                }
+            } else { if(bird.position.y > 3.4) bird.position.y -= 0.05; }
 
             scenes[1].getObjectByName("bird").position.copy(bird.position);
-            scenes[1].getObjectByName("bird").children[0].material.color.copy(bird.children[0].material.color);
-
             if (bird.position.y <= -3.2) checkCollisionAndProgress();
 
             renderer.setScissor(0, 0, window.innerWidth / 2, window.innerHeight);
@@ -516,13 +429,6 @@
             renderer.setViewport(window.innerWidth / 2, 0, window.innerWidth / 2, window.innerHeight);
             renderer.setScissorTest(true);
             renderer.render(scenes[1], cameras[1]);
-        }
-
-        window.addEventListener('resize', onWindowResize, false);
-        function onWindowResize() {
-            cameras[0].aspect = (window.innerWidth / 2) / window.innerHeight; cameras[0].updateProjectionMatrix();
-            cameras[1].aspect = (window.innerWidth / 2) / window.innerHeight; cameras[1].updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
         }
     </script>
 </body>
