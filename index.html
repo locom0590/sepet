@@ -3,63 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-    <title>FTR VR - Seviye 1 (Tam Sürükleyici VR Modu)</title>
+    <title>FTR VR - Seviye 1 (Optik ve 3D Odaklama Güncellemesi)</title>
     <style>
-        body {
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-            background-color: #000;
-            font-family: sans-serif;
-        }
+        body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
         #overlay {
-            position: absolute;
-            width: 100%;
-            height: 100%;
-            background: rgba(10, 15, 25, 0.98);
-            z-index: 10;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            color: white;
-            text-align: center;
-            padding: 20px;
-            box-sizing: border-box;
+            position: absolute; width: 100%; height: 100%; background: rgba(10, 15, 25, 0.98);
+            z-index: 10; display: flex; flex-direction: column; justify-content: center; align-items: center;
+            color: white; text-align: center; padding: 20px; box-sizing: border-box;
         }
         button {
-            padding: 18px 36px;
-            font-size: 20px;
-            background-color: #2ecc71;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            margin-top: 25px;
-            font-weight: bold;
-            box-shadow: 0 4px 15px rgba(46, 204, 113, 0.4);
+            padding: 18px 36px; font-size: 20px; background-color: #2ecc71; color: white; border: none;
+            border-radius: 8px; cursor: pointer; margin-top: 25px; font-weight: bold;
         }
-        #vr-divider {
-            position: absolute;
-            left: 50%;
-            top: 0;
-            width: 2px;
-            height: 100%;
-            background-color: rgba(255,255,255,0.15);
-            z-index: 5;
-            display: none;
-        }
+        #vr-divider { position: absolute; left: 50%; top: 0; width: 2px; height: 100%; background-color: rgba(255,255,255,0.15); z-index: 5; display: none; }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
 
     <div id="overlay">
-        <h2>Yavru Kuş Kurtarma: Gerçek VR Modu</h2>
-        <p>Telefonu <b>YAN ÇEVİRİN</b> ve VR Box'a yerleştirmeden önce butona basın.</p>
-        <p style="font-size: 14px; color: #f1c40f; font-weight: bold;">
-            (Tam Ekran, Göz Koruma Derinliği ve Ekran Kapanma Engeli Aktif Edilecek)
-        </p>
+        <h2>Yavru Kuş Kurtarma: Gerçek 3D VR Optimizasyonu</h2>
+        <p>Görsel karelenmeler temizlendi ve kameralar 3D derinlik hissi (Göz konverjansı) için içe doğru odaklandı.</p>
         <button id="startButton">VR MODUNU BAŞLAT</button>
     </div>
 
@@ -78,7 +42,7 @@
         let currentX = 0;
         const filterFactor = 0.05; 
         let gyroCenter = 0; 
-        const sensitivity = 0.18; // Uzaklık arttığı için hassasiyet biraz artırıldı
+        const sensitivity = 0.15; 
         const deadzone = 1.0; 
 
         const dropSpeed = 0.04; 
@@ -87,16 +51,14 @@
         let isWaitingForCenter = true; 
         const centerTolerance = 2.0; 
 
-        // VR IPD (Gözler Arası Mesafe Ölçüsü) -> Gerçek 3D derinlik hissi için
-        const ipd = 0.12; 
+        // VR Kamera ve Odak Ayarları (3D Derinlik Sorununu Çözen Alan)
+        const ipd = 0.15; // Gözler arası mesafe (Stereoscopic kamera aralığı)
 
         // Three.js Değişkenleri
         let scenes = [], cameras = [], renderer;
         let bird, leftNest, rightNest;
         let isPlaying = false;
         let wakeLock = null;
-
-        // Ses Efekti
         let audioCtx = null;
 
         const overlay = document.getElementById('overlay');
@@ -109,8 +71,7 @@
             if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             let osc = audioCtx.createOscillator();
             let gain = audioCtx.createGain();
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
+            osc.connect(gain); gain.connect(audioCtx.destination);
             osc.frequency.value = 600; 
             gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
             osc.start();
@@ -118,42 +79,21 @@
             osc.stop(audioCtx.currentTime + 0.15);
         }
 
-        // TAM EKRAN VE WAKE LOCK (EKRAN KAPANMA ENGELİ) ENTEGRASYONU
         async function requestScreenHandling() {
-            // 1. Tam Ekran Yap
             const docEl = document.documentElement;
             if (docEl.requestFullscreen) { docEl.requestFullscreen(); }
-            else if (docEl.mozRequestFullScreen) { docEl.mozRequestFullScreen(); }
-            else if (docEl.webkitRequestFullscreen) { docEl.webkitRequestFullscreen(); }
-            else if (docEl.msRequestFullscreen) { docEl.msRequestFullscreen(); }
-
-            // 2. Ekran Kararmasını/Kapanmasını Engelle (Wake Lock API)
             if ('wakeLock' in navigator) {
-                try {
-                    wakeLock = await navigator.wakeLock.request('screen');
-                    console.log('Ekran kilitleme aktif: Ekran kapanmayacak.');
-                } catch (err) {
-                    console.log(`Wake Lock hatası: ${err.message}`);
-                }
+                try { wakeLock = await navigator.wakeLock.request('screen'); } catch (err) { console.log(err); }
             }
         }
 
         function startOyun() {
-            requestScreenHandling(); // Ekran ayarlarını tetikle
-
+            requestScreenHandling();
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 DeviceOrientationEvent.requestPermission()
-                    .then(permissionState => {
-                        if (permissionState === 'granted') {
-                            initGame();
-                        } else {
-                            alert('Jiroskop izni reddedildi.');
-                        }
-                    })
+                    .then(permissionState => { if (permissionState === 'granted') { initGame(); } })
                     .catch(console.error);
-            } else {
-                initGame();
-            }
+            } else { initGame(); }
         }
 
         function initGame() {
@@ -163,20 +103,24 @@
 
             window.addEventListener('deviceorientation', handleOrientation, true);
 
-            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Piksellenmeyi (karelenmeyi) önlemek için çözünürlüğü kilitledik
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
 
-            // Gelişmiş VR Kamera Yapısı (Göz Derinlikli)
+            // Çift Sahne Kurulumu
             scenes.push(createSceneArchitecture());
-            cameras.push(new THREE.PerspectiveCamera(60, (window.innerWidth / 2) / window.innerHeight, 0.1, 1000));
-            // Sol kamera biraz solda (-ipd) ve uzakta (16)
-            cameras[0].position.set(-ipd, 0, 16); 
+            scenes.push(createSceneArchitecture());
 
-            scenes.push(createSceneArchitecture());
-            cameras.push(new THREE.PerspectiveCamera(60, (window.innerWidth / 2) / window.innerHeight, 0.1, 1000));
-            // Sağ kamera biraz sağda (+ipd) ve uzakta (16)
-            cameras[1].position.set(ipd, 0, 16); 
+            // --- 3D DERİNLİK HİSSİ İÇİN MERCEK ODAKLAMA (TOE-IN KONVERJANS) ---
+            // Geniş açı (90 derece) lens seçildi, böylece pürüzsüz derinlik mesafesi sağlandı
+            cameras.push(new THREE.PerspectiveCamera(90, (window.innerWidth / 2) / window.innerHeight, 0.1, 1000));
+            cameras[0].position.set(-ipd, 0, 7.5); // Kamerayı yaklaştırdık
+            cameras[0].rotation.y = 0.015; // Sol kamerayı hafifçe sağa (içe) büktük (Derinlik hissinin sırrı)
+
+            cameras.push(new THREE.PerspectiveCamera(90, (window.innerWidth / 2) / window.innerHeight, 0.1, 1000));
+            cameras[1].position.set(ipd, 0, 7.5); // Kamerayı yaklaştırdık
+            cameras[1].rotation.y = -0.015; // Sağ kamerayı hafifçe sola (içe) büktük
 
             bird = scenes[0].getObjectByName("bird");
             leftNest = scenes[0].getObjectByName("leftNest");
@@ -190,27 +134,23 @@
 
         function createSceneArchitecture() {
             const scene = new THREE.Scene();
-            // Parlaklığı artırmak için arka plan rengini biraz daha canlı tonlara çektik
-            scene.background = new THREE.Color(0x243447); 
+            scene.background = new THREE.Color(0x1a252f); // Karelenmeyi önleyen temiz tek renk pastel arka plan
 
-            // Işıkları Güçlendirdik (Dijital Parlaklık Artışı)
-            const ambientLight = new THREE.AmbientLight(0xffffff, 1.2); // 0.7'den 1.2'ye çıkarıldı
+            // Basit ve Güçlü Işıklar (Karelenme üreten gölgeler kaldırıldı)
+            const ambientLight = new THREE.AmbientLight(0xffffff, 1.5); 
             scene.add(ambientLight);
-            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-            dirLight.position.set(0, 15, 8);
-            scene.add(dirLight);
 
-            // 3D Kuş
+            // 3D Kuş (Karelenmeyen pürüzsüz malzeme)
             const birdGroup = new THREE.Group();
             birdGroup.name = "bird";
 
             const bodyGeo = new THREE.SphereGeometry(0.4, 32, 32);
-            const bodyMat = new THREE.MeshStandardMaterial({ color: 0xffd700, roughness: 0.3 }); // Daha parlak altın sarısı
+            const bodyMat = new THREE.MeshBasicMaterial({ color: 0xffd700 }); // Işık hesaplaması istemeyen pürüzsüz materyal
             const body = new THREE.Mesh(bodyGeo, bodyMat);
             birdGroup.add(body);
 
-            const beakGeo = new THREE.ConeGeometry(0.1, 0.3, 4);
-            const beakMat = new THREE.MeshStandardMaterial({ color: 0xff5722 }); 
+            const beakGeo = new THREE.ConeGeometry(0.1, 0.3, 16);
+            const beakMat = new THREE.MeshBasicMaterial({ color: 0xff5722 }); 
             const beak = new THREE.Mesh(beakGeo, beakMat);
             beak.rotation.x = Math.PI / 2;
             beak.position.set(0, 0, 0.4);
@@ -218,9 +158,9 @@
             
             scene.add(birdGroup);
 
-            // Yuvalar (Genişletilmiş ve Belirginleştirilmiş)
-            const nestMat = new THREE.MeshStandardMaterial({ color: 0xe67e22, roughness: 0.5 });
-            const nestGeo = new THREE.CylinderGeometry(1.2, 1.5, 0.6, 16);
+            // Yuvalar (1.5 Kat Büyütülmüş ve pürüzsüz)
+            const nestMat = new THREE.MeshBasicMaterial({ color: 0xe67e22 });
+            const nestGeo = new THREE.CylinderGeometry(1.2, 1.5, 0.6, 32); // Detay kalitesi artırıldı (karelenme önlendi)
 
             const lNest = new THREE.Mesh(nestGeo, nestMat);
             lNest.name = "leftNest";
@@ -233,35 +173,21 @@
             scene.add(rNest);
 
             // Kılavuz Çizgisi
-            const lineGeo = new THREE.BoxGeometry(7, 0.05, 0.1);
-            const lineMat = new THREE.MeshBasicMaterial({color: 0x475569});
+            const lineGeo = new THREE.BoxGeometry(7, 0.04, 0.1);
+            const lineMat = new THREE.MeshBasicMaterial({color: 0x34495e});
             const line = new THREE.Mesh(lineGeo, lineMat);
             line.position.set(0, 3.3, -0.5);
             scene.add(line);
-
-            // Derinlik Hissini Güçlendiren Ortam Küpleri (Kafa hareketinde paralaks yaratacak sabit nesneler)
-            for(let i=0; i<15; i++) {
-                const blockGeo = new THREE.BoxGeometry(0.4, 0.4, 0.4);
-                const blockMat = new THREE.MeshStandardMaterial({color: 0x334155});
-                const block = new THREE.Mesh(blockGeo, blockMat);
-                // Geniş bir alana ve farklı derinliklere (Z eksenine) dağıtıyoruz
-                block.position.set(Math.random()*12 - 6, Math.random()*10 - 5, Math.random()*10 - 8);
-                scene.add(block);
-            }
 
             return scene;
         }
 
         function handleOrientation(event) {
             if (!isPlaying) return;
-
             let rawBeta = event.beta; 
             if (rawBeta === null) return;
 
-            if (gyroCenter === 0) {
-                gyroCenter = rawBeta;
-            }
-
+            if (gyroCenter === 0) gyroCenter = rawBeta;
             let relativeAngle = rawBeta - gyroCenter;
 
             if (isWaitingForCenter) {
@@ -281,113 +207,78 @@
 
         function resetBirdPosition() {
             bird.position.set(0, 4, 0); 
-            targetX = 0;
-            currentX = 0;
+            targetX = 0; currentX = 0;
             isWaitingForCenter = true; 
         }
 
         function updateNestVisibilities() {
-            if (currentStage === 0) {
-                leftNest.visible = true;
-                rightNest.visible = true;
-            } else if (currentStage === 1) {
-                leftNest.visible = false;
-                rightNest.visible = true;
-            } else if (currentStage === 2) {
-                leftNest.visible = true;
-                rightNest.visible = false;
-            } else if (currentStage === 3) {
+            if (currentStage === 0) { leftNest.visible = true; rightNest.visible = true; } 
+            else if (currentStage === 1) { leftNest.visible = false; rightNest.visible = true; } 
+            else if (currentStage === 2) { leftNest.visible = true; rightNest.visible = false; } 
+            else if (currentStage === 3) {
                 const rand = Math.random() > 0.5;
-                leftNest.visible = rand;
-                rightNest.visible = !rand;
+                leftNest.visible = rand; rightNest.visible = !rand;
             }
-
             scenes[1].getObjectByName("leftNest").visible = leftNest.visible;
             scenes[1].getObjectByName("rightNest").visible = rightNest.visible;
         }
 
         function checkCollisionAndProgress() {
             let hitCorrectNest = false;
-
-            if (bird.position.x > 0.8 && rightNest.visible) {
-                hitCorrectNest = true; 
-            } else if (bird.position.x < -0.8 && leftNest.visible) {
-                hitCorrectNest = true; 
-            } else if (currentStage === 0 && (bird.position.x > 0.8 || bird.position.x < -0.8)) {
-                hitCorrectNest = true; 
-            }
+            if (bird.position.x > 0.8 && rightNest.visible) hitCorrectNest = true; 
+            else if (bird.position.x < -0.8 && leftNest.visible) hitCorrectNest = true; 
+            else if (currentStage === 0 && (bird.position.x > 0.8 || bird.position.x < -0.8)) hitCorrectNest = true; 
 
             if (hitCorrectNest) {
-                stageSuccessCount++;
-                totalScore++;
-                
+                stageSuccessCount++; totalScore++;
                 if (stageSuccessCount >= stageTargetCounts[currentStage]) {
-                    stageSuccessCount = 0;
-                    currentStage++;
-
+                    stageSuccessCount = 0; currentStage++;
                     if (currentStage > 3) {
-                        if (loopCounter < 2) {
-                            loopCounter++;
-                            currentStage = 1; 
-                        } else {
+                        if (loopCounter < 2) { loopCounter++; currentStage = 1; } 
+                        else {
                             isPlaying = false;
-                            // Çıkışta wake lock kilidini serbest bırak
                             if (wakeLock !== null) { wakeLock.release(); wakeLock = null; }
                             alert(`TEBRİKLER! Seviye 1 Başarıyla Bitti.\nToplam Skor: ${totalScore}`);
-                            location.reload();
-                            return;
+                            location.reload(); return;
                         }
                     }
                 }
             }
-
-            updateNestVisibilities();
-            resetBirdPosition();
+            updateNestVisibilities(); resetBirdPosition();
         }
 
         function animate() {
             if (!isPlaying) return;
-
             requestAnimationFrame(animate);
 
             if (isWaitingForCenter) {
-                bird.children[0].material.color.setHex(0x555555); // Kilitli
+                bird.children[0].material.color.setHex(0x555555);
             } else {
-                bird.children[0].material.color.setHex(0xffd700); // Aktif Altın Sarısı
+                bird.children[0].material.color.setHex(0xffd700);
             }
 
             currentX += (targetX - currentX) * filterFactor;
             
-            // Kamera derinlik hissi (Paralaks): Kafa eğildikçe kameraları hafifçe zıt yöne kaydırarak
-            // 3D dünyada gerçek bir süzülme hissi uyandırıyoruz.
-            cameras[0].position.x = -ipd + (currentX * 0.2);
-            cameras[1].position.x = ipd + (currentX * 0.2);
-
             if(currentX > 3.5) currentX = 3.5;
             if(currentX < -3.5) currentX = -3.5;
 
             bird.position.x = currentX;
 
-            if (!isWaitingForCenter) {
-                bird.position.y -= dropSpeed;
-            } else {
-                if(bird.position.y > 3.4) bird.position.y -= 0.05;
-            }
+            if (!isWaitingForCenter) { bird.position.y -= dropSpeed; } 
+            else { if(bird.position.y > 3.4) bird.position.y -= 0.05; }
 
             scenes[1].getObjectByName("bird").position.copy(bird.position);
             scenes[1].getObjectByName("bird").children[0].material.color.copy(bird.children[0].material.color);
 
-            if (bird.position.y <= -3.2) {
-                checkCollisionAndProgress();
-            }
+            if (bird.position.y <= -3.2) checkCollisionAndProgress();
 
-            // Sol Göz
+            // Sol Göz Render
             renderer.setScissor(0, 0, window.innerWidth / 2, window.innerHeight);
             renderer.setViewport(0, 0, window.innerWidth / 2, window.innerHeight);
             renderer.setScissorTest(true);
             renderer.render(scenes[0], cameras[0]);
 
-            // Sağ Göz
+            // Sağ Göz Render
             renderer.setScissor(window.innerWidth / 2, 0, window.innerWidth / 2, window.innerHeight);
             renderer.setViewport(window.innerWidth / 2, 0, window.innerWidth / 2, window.innerHeight);
             renderer.setScissorTest(true);
@@ -396,10 +287,8 @@
 
         window.addEventListener('resize', onWindowResize, false);
         function onWindowResize() {
-            cameras[0].aspect = (window.innerWidth / 2) / window.innerHeight;
-            cameras[0].updateProjectionMatrix();
-            cameras[1].aspect = (window.innerWidth / 2) / window.innerHeight;
-            cameras[1].updateProjectionMatrix();
+            cameras[0].aspect = (window.innerWidth / 2) / window.innerHeight; cameras[0].updateProjectionMatrix();
+            cameras[1].aspect = (window.innerWidth / 2) / window.innerHeight; cameras[1].updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
     </script>
