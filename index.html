@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-    <title>FTR VR - Seviye 1 (Çözüm C: Zıt Rüzgar Efekti)</title>
+    <title>FTR VR - Seviye 1 (Çözüm C: Güçlendirilmiş Rüzgar Modu)</title>
     <style>
         body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
         #overlay {
@@ -23,9 +23,9 @@
 
     <div id="overlay">
         <h2>Yavru Kuş Kurtarma: Seviye 1</h2>
-        <p><b>ÇÖZÜM C: ZIT RÜZGAR EFEKTİ AKTİF</b></p>
+        <p><b>ÇÖZÜM C: GÜÇLENDİRİLMİŞ RÜZGAR EFEKTİ</b></p>
         <p>Telefonu YAN ÇEVİRİN, düz tutun ve butona basın.</p>
-        <p style="font-size: 14px; color: #3498db; font-weight: bold;">(Kuş her doğduğunda, bir önceki hedefinizin tam tersi yönüne doğru rüzgarla savrulur!)</p>
+        <p style="font-size: 14px; color: #3498db; font-weight: bold;">(Kuş jiroskoptan bağımsız olarak zıt yöne savrulur. Yenmek için aktif kuvvet uygulayın!)</p>
         <button id="startButton">VR MODUNU BAŞLAT</button>
     </div>
 
@@ -49,12 +49,12 @@
 
         const dropSpeed = 0.04; 
 
-        // --- ÇÖZÜM C DEĞİŞKENLERİ (RÜZGAR MEKANİZMASI) ---
-        let lastSuccessfulSide = "none"; // "right", "left" veya "none"
-        let currentWindForce = 0; // O anki rüzgarın kuşa uyguladığı X ekseni kuvveti
-        const windStrength = 0.025; // Rüzgarın gücü (Kuşun süzülme hızına göre dengelendi)
+        // --- ÇÖZÜM C DEĞİŞKENLERİ (GÜÇLENDİRİLMİŞ RÜZGAR) ---
+        let lastSuccessfulSide = "none"; 
+        let currentWindForce = 0; 
+        const windStrength = 0.04; // Rüzgar baz gücü artırıldı
 
-        // VR Kamera ve Odak Ayarları (Toe-in 3D Derinlik)
+        // VR Kamera Ayarları (Toe-in 3D Derinlik)
         const ipd = 0.15; 
 
         // Three.js Değişkenleri
@@ -101,7 +101,7 @@
             scenes.push(createSceneArchitecture());
             scenes.push(createSceneArchitecture());
 
-            // 3D Derinlikli Kamera Kurulumu (Toe-in)
+            // 3D Odaklı Kameralar
             cameras.push(new THREE.PerspectiveCamera(90, (window.innerWidth / 2) / window.innerHeight, 0.1, 1000));
             cameras[0].position.set(-ipd, 0, 7.5); 
             cameras[0].rotation.y = 0.015; 
@@ -145,7 +145,7 @@
             
             scene.add(birdGroup);
 
-            // Yuvalar (1.5 Kat Büyük ve Pürüzsüz)
+            // Yuvalar (%50 Büyük)
             const nestMat = new THREE.MeshBasicMaterial({ color: 0xe67e22 });
             const nestGeo = new THREE.CylinderGeometry(1.2, 1.5, 0.6, 32); 
 
@@ -182,17 +182,12 @@
             targetX = 0; 
             currentX = 0;
 
-            // --- ÇÖZÜM C RÜZGAR HESAPLAMASI ---
+            // Rüzgar Yönü Ataması
             if (lastSuccessfulSide === "right") {
-                // En son sağa yerleştiyse, rüzgar SOLA doğru üfler (Eksi Kuvvet)
-                currentWindForce = -windStrength;
-                console.log("🌬️ Rüzgar sola esiyor! Sağa gitmek için kafayı daha çok eğin.");
+                currentWindForce = -windStrength; // Sola doğru it
             } else if (lastSuccessfulSide === "left") {
-                // En son sola yerleştiyse, rüzgar SAĞA doğru üfler (Artı Kuvvet)
-                currentWindForce = windStrength;
-                console.log("🌬️ Rüzgar sağa esiyor! Sola gitmek için kafayı daha çok eğin.");
+                currentWindForce = windStrength;  // Sağa doğru it
             } else {
-                // Henüz ilk oyun veya ısınma başlangıcı ise rüzgar rastgele yön seçer
                 currentWindForce = Math.random() > 0.5 ? windStrength : -windStrength;
             }
         }
@@ -214,10 +209,10 @@
             
             if (bird.position.x > 0.8 && rightNest.visible) {
                 hitCorrectNest = true; 
-                lastSuccessfulSide = "right"; // Başarı yönünü kaydet
+                lastSuccessfulSide = "right"; 
             } else if (bird.position.x < -0.8 && leftNest.visible) {
                 hitCorrectNest = true; 
-                lastSuccessfulSide = "left"; // Başarı yönünü kaydet
+                lastSuccessfulSide = "left"; 
             } else if (currentStage === 0 && (bird.position.x > 0.8 || bird.position.x < -0.8)) {
                 hitCorrectNest = true; 
                 lastSuccessfulSide = bird.position.x > 0.8 ? "right" : "left";
@@ -245,29 +240,32 @@
             if (!isPlaying) return;
             requestAnimationFrame(animate);
 
-            // Jiroskop pürüzsüzleştirme kontrolü
+            // 1. Jiroskop filtresi çalışır (Sadece kafa hamlesini hesaplar)
             currentX += (targetX - currentX) * filterFactor;
             
-            // --- ÇÖZÜM C RÜZGAR ETKİSİ UYGULAMA ---
-            // Kuş jiroskoptan bağımsız olarak rüzgar kuvveti yönünde sürekli sürüklenir
+            // 2. RÜZGAR ETKİSİ FİLTRENİN DIŞINDA BİR KUVVET OLARAK DOĞRUDAN POZİSYONA EKLENİR
+            // Rüzgar kuvveti her karede kuşun pozisyonunu bir yöne doğru kaydırır.
             currentX += currentWindForce;
 
+            // Sınır kontrolleri
             if(currentX > 3.5) currentX = 3.5;
             if(currentX < -3.5) currentX = -3.5;
 
+            // Kuşun nihai X pozisyonu güncellenir
             bird.position.x = currentX;
-            bird.position.y -= dropSpeed; // Sabit süzülme düşüşü
+            bird.position.y -= dropSpeed; 
 
             scenes[1].getObjectByName("bird").position.copy(bird.position);
 
             if (bird.position.y <= -3.2) checkCollisionAndProgress();
 
-            // VR Render Çift Ekran
+            // Sol Göz Render
             renderer.setScissor(0, 0, window.innerWidth / 2, window.innerHeight);
             renderer.setViewport(0, 0, window.innerWidth / 2, window.innerHeight);
             renderer.setScissorTest(true);
             renderer.render(scenes[0], cameras[0]);
 
+            // Sağ Göz Render
             renderer.setScissor(window.innerWidth / 2, 0, window.innerWidth / 2, window.innerHeight);
             renderer.setViewport(window.innerWidth / 2, 0, window.innerWidth / 2, window.innerHeight);
             renderer.setScissorTest(true);
