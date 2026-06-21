@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-    <title>FTR VR - Seviye 1 (Optik ve 3D Odaklama Güncellemesi)</title>
+    <title>FTR VR - Seviye 1 (Çözüm C: Zıt Rüzgar Efekti)</title>
     <style>
         body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
         #overlay {
@@ -22,8 +22,10 @@
 <body>
 
     <div id="overlay">
-        <h2>Yavru Kuş Kurtarma: Gerçek 3D VR Optimizasyonu</h2>
-        <p>Görsel karelenmeler temizlendi ve kameralar 3D derinlik hissi (Göz konverjansı) için içe doğru odaklandı.</p>
+        <h2>Yavru Kuş Kurtarma: Seviye 1</h2>
+        <p><b>ÇÖZÜM C: ZIT RÜZGAR EFEKTİ AKTİF</b></p>
+        <p>Telefonu YAN ÇEVİRİN, düz tutun ve butona basın.</p>
+        <p style="font-size: 14px; color: #3498db; font-weight: bold;">(Kuş her doğduğunda, bir önceki hedefinizin tam tersi yönüne doğru rüzgarla savrulur!)</p>
         <button id="startButton">VR MODUNU BAŞLAT</button>
     </div>
 
@@ -47,37 +49,25 @@
 
         const dropSpeed = 0.04; 
 
-        // ÇÖZÜM A DEĞİŞKENLERİ
-        let isWaitingForCenter = true; 
-        const centerTolerance = 2.0; 
+        // --- ÇÖZÜM C DEĞİŞKENLERİ (RÜZGAR MEKANİZMASI) ---
+        let lastSuccessfulSide = "none"; // "right", "left" veya "none"
+        let currentWindForce = 0; // O anki rüzgarın kuşa uyguladığı X ekseni kuvveti
+        const windStrength = 0.025; // Rüzgarın gücü (Kuşun süzülme hızına göre dengelendi)
 
-        // VR Kamera ve Odak Ayarları (3D Derinlik Sorununu Çözen Alan)
-        const ipd = 0.15; // Gözler arası mesafe (Stereoscopic kamera aralığı)
+        // VR Kamera ve Odak Ayarları (Toe-in 3D Derinlik)
+        const ipd = 0.15; 
 
         // Three.js Değişkenleri
         let scenes = [], cameras = [], renderer;
         let bird, leftNest, rightNest;
         let isPlaying = false;
         let wakeLock = null;
-        let audioCtx = null;
 
         const overlay = document.getElementById('overlay');
         const startButton = document.getElementById('startButton');
         const vrDivider = document.getElementById('vr-divider');
 
         startButton.addEventListener('click', startOyun);
-
-        function playCenterBeep() {
-            if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            let osc = audioCtx.createOscillator();
-            let gain = audioCtx.createGain();
-            osc.connect(gain); gain.connect(audioCtx.destination);
-            osc.frequency.value = 600; 
-            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
-            osc.start();
-            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
-            osc.stop(audioCtx.currentTime + 0.15);
-        }
 
         async function requestScreenHandling() {
             const docEl = document.documentElement;
@@ -104,23 +94,21 @@
             window.addEventListener('deviceorientation', handleOrientation, true);
 
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Piksellenmeyi (karelenmeyi) önlemek için çözünürlüğü kilitledik
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
 
-            // Çift Sahne Kurulumu
             scenes.push(createSceneArchitecture());
             scenes.push(createSceneArchitecture());
 
-            // --- 3D DERİNLİK HİSSİ İÇİN MERCEK ODAKLAMA (TOE-IN KONVERJANS) ---
-            // Geniş açı (90 derece) lens seçildi, böylece pürüzsüz derinlik mesafesi sağlandı
+            // 3D Derinlikli Kamera Kurulumu (Toe-in)
             cameras.push(new THREE.PerspectiveCamera(90, (window.innerWidth / 2) / window.innerHeight, 0.1, 1000));
-            cameras[0].position.set(-ipd, 0, 7.5); // Kamerayı yaklaştırdık
-            cameras[0].rotation.y = 0.015; // Sol kamerayı hafifçe sağa (içe) büktük (Derinlik hissinin sırrı)
+            cameras[0].position.set(-ipd, 0, 7.5); 
+            cameras[0].rotation.y = 0.015; 
 
             cameras.push(new THREE.PerspectiveCamera(90, (window.innerWidth / 2) / window.innerHeight, 0.1, 1000));
-            cameras[1].position.set(ipd, 0, 7.5); // Kamerayı yaklaştırdık
-            cameras[1].rotation.y = -0.015; // Sağ kamerayı hafifçe sola (içe) büktük
+            cameras[1].position.set(ipd, 0, 7.5); 
+            cameras[1].rotation.y = -0.015; 
 
             bird = scenes[0].getObjectByName("bird");
             leftNest = scenes[0].getObjectByName("leftNest");
@@ -134,18 +122,17 @@
 
         function createSceneArchitecture() {
             const scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x1a252f); // Karelenmeyi önleyen temiz tek renk pastel arka plan
+            scene.background = new THREE.Color(0x1a252f); 
 
-            // Basit ve Güçlü Işıklar (Karelenme üreten gölgeler kaldırıldı)
             const ambientLight = new THREE.AmbientLight(0xffffff, 1.5); 
             scene.add(ambientLight);
 
-            // 3D Kuş (Karelenmeyen pürüzsüz malzeme)
+            // 3D Kuş
             const birdGroup = new THREE.Group();
             birdGroup.name = "bird";
 
             const bodyGeo = new THREE.SphereGeometry(0.4, 32, 32);
-            const bodyMat = new THREE.MeshBasicMaterial({ color: 0xffd700 }); // Işık hesaplaması istemeyen pürüzsüz materyal
+            const bodyMat = new THREE.MeshBasicMaterial({ color: 0xffd700 }); 
             const body = new THREE.Mesh(bodyGeo, bodyMat);
             birdGroup.add(body);
 
@@ -158,9 +145,9 @@
             
             scene.add(birdGroup);
 
-            // Yuvalar (1.5 Kat Büyütülmüş ve pürüzsüz)
+            // Yuvalar (1.5 Kat Büyük ve Pürüzsüz)
             const nestMat = new THREE.MeshBasicMaterial({ color: 0xe67e22 });
-            const nestGeo = new THREE.CylinderGeometry(1.2, 1.5, 0.6, 32); // Detay kalitesi artırıldı (karelenme önlendi)
+            const nestGeo = new THREE.CylinderGeometry(1.2, 1.5, 0.6, 32); 
 
             const lNest = new THREE.Mesh(nestGeo, nestMat);
             lNest.name = "leftNest";
@@ -171,13 +158,6 @@
             rNest.name = "rightNest";
             rNest.position.set(2.5, -3.5, 0);
             scene.add(rNest);
-
-            // Kılavuz Çizgisi
-            const lineGeo = new THREE.BoxGeometry(7, 0.04, 0.1);
-            const lineMat = new THREE.MeshBasicMaterial({color: 0x34495e});
-            const line = new THREE.Mesh(lineGeo, lineMat);
-            line.position.set(0, 3.3, -0.5);
-            scene.add(line);
 
             return scene;
         }
@@ -190,25 +170,31 @@
             if (gyroCenter === 0) gyroCenter = rawBeta;
             let relativeAngle = rawBeta - gyroCenter;
 
-            if (isWaitingForCenter) {
-                if (Math.abs(relativeAngle) <= centerTolerance) {
-                    isWaitingForCenter = false; 
-                    playCenterBeep(); 
-                }
-                targetX = 0; 
+            if (Math.abs(relativeAngle) < deadzone) {
+                targetX = 0;
             } else {
-                if (Math.abs(relativeAngle) < deadzone) {
-                    targetX = 0;
-                } else {
-                    targetX = relativeAngle * sensitivity;
-                }
+                targetX = relativeAngle * sensitivity;
             }
         }
 
         function resetBirdPosition() {
             bird.position.set(0, 4, 0); 
-            targetX = 0; currentX = 0;
-            isWaitingForCenter = true; 
+            targetX = 0; 
+            currentX = 0;
+
+            // --- ÇÖZÜM C RÜZGAR HESAPLAMASI ---
+            if (lastSuccessfulSide === "right") {
+                // En son sağa yerleştiyse, rüzgar SOLA doğru üfler (Eksi Kuvvet)
+                currentWindForce = -windStrength;
+                console.log("🌬️ Rüzgar sola esiyor! Sağa gitmek için kafayı daha çok eğin.");
+            } else if (lastSuccessfulSide === "left") {
+                // En son sola yerleştiyse, rüzgar SAĞA doğru üfler (Artı Kuvvet)
+                currentWindForce = windStrength;
+                console.log("🌬️ Rüzgar sağa esiyor! Sola gitmek için kafayı daha çok eğin.");
+            } else {
+                // Henüz ilk oyun veya ısınma başlangıcı ise rüzgar rastgele yön seçer
+                currentWindForce = Math.random() > 0.5 ? windStrength : -windStrength;
+            }
         }
 
         function updateNestVisibilities() {
@@ -225,9 +211,17 @@
 
         function checkCollisionAndProgress() {
             let hitCorrectNest = false;
-            if (bird.position.x > 0.8 && rightNest.visible) hitCorrectNest = true; 
-            else if (bird.position.x < -0.8 && leftNest.visible) hitCorrectNest = true; 
-            else if (currentStage === 0 && (bird.position.x > 0.8 || bird.position.x < -0.8)) hitCorrectNest = true; 
+            
+            if (bird.position.x > 0.8 && rightNest.visible) {
+                hitCorrectNest = true; 
+                lastSuccessfulSide = "right"; // Başarı yönünü kaydet
+            } else if (bird.position.x < -0.8 && leftNest.visible) {
+                hitCorrectNest = true; 
+                lastSuccessfulSide = "left"; // Başarı yönünü kaydet
+            } else if (currentStage === 0 && (bird.position.x > 0.8 || bird.position.x < -0.8)) {
+                hitCorrectNest = true; 
+                lastSuccessfulSide = bird.position.x > 0.8 ? "right" : "left";
+            }
 
             if (hitCorrectNest) {
                 stageSuccessCount++; totalScore++;
@@ -238,7 +232,7 @@
                         else {
                             isPlaying = false;
                             if (wakeLock !== null) { wakeLock.release(); wakeLock = null; }
-                            alert(`TEBRİKLER! Seviye 1 Başarıyla Bitti.\nToplam Skor: ${totalScore}`);
+                            alert(`TEBRİKLER! Seviye 1 Rüzgar Modu Tamamlandı!\nToplam Skor: ${totalScore}`);
                             location.reload(); return;
                         }
                     }
@@ -251,34 +245,29 @@
             if (!isPlaying) return;
             requestAnimationFrame(animate);
 
-            if (isWaitingForCenter) {
-                bird.children[0].material.color.setHex(0x555555);
-            } else {
-                bird.children[0].material.color.setHex(0xffd700);
-            }
-
+            // Jiroskop pürüzsüzleştirme kontrolü
             currentX += (targetX - currentX) * filterFactor;
             
+            // --- ÇÖZÜM C RÜZGAR ETKİSİ UYGULAMA ---
+            // Kuş jiroskoptan bağımsız olarak rüzgar kuvveti yönünde sürekli sürüklenir
+            currentX += currentWindForce;
+
             if(currentX > 3.5) currentX = 3.5;
             if(currentX < -3.5) currentX = -3.5;
 
             bird.position.x = currentX;
-
-            if (!isWaitingForCenter) { bird.position.y -= dropSpeed; } 
-            else { if(bird.position.y > 3.4) bird.position.y -= 0.05; }
+            bird.position.y -= dropSpeed; // Sabit süzülme düşüşü
 
             scenes[1].getObjectByName("bird").position.copy(bird.position);
-            scenes[1].getObjectByName("bird").children[0].material.color.copy(bird.children[0].material.color);
 
             if (bird.position.y <= -3.2) checkCollisionAndProgress();
 
-            // Sol Göz Render
+            // VR Render Çift Ekran
             renderer.setScissor(0, 0, window.innerWidth / 2, window.innerHeight);
             renderer.setViewport(0, 0, window.innerWidth / 2, window.innerHeight);
             renderer.setScissorTest(true);
             renderer.render(scenes[0], cameras[0]);
 
-            // Sağ Göz Render
             renderer.setScissor(window.innerWidth / 2, 0, window.innerWidth / 2, window.innerHeight);
             renderer.setViewport(window.innerWidth / 2, 0, window.innerWidth / 2, window.innerHeight);
             renderer.setScissorTest(true);
