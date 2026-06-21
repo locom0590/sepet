@@ -141,11 +141,11 @@
 
             scenes.push(createSceneArchitecture());
             cameras.push(new THREE.PerspectiveCamera(60, (window.innerWidth / 2) / window.innerHeight, 0.1, 1000));
-            cameras[0].position.set(0, 0, 8);
+            cameras[0].position.set(0, 0, 16);
 
             scenes.push(createSceneArchitecture());
             cameras.push(new THREE.PerspectiveCamera(60, (window.innerWidth / 2) / window.innerHeight, 0.1, 1000));
-            cameras[1].position.set(0, 0, 8);
+            cameras[1].position.set(0, 0, 16);
 
             bird = scenes[0].getObjectByName("bird");
             leftNest = scenes[0].getObjectByName("leftNest");
