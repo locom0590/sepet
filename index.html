@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-    <title>FTR VR - Hemipleji Rehabilitasyonu Seviye 1 (Landscape Optimizeli)</title>
+    <title>FTR VR - Seviye 1 (Çözüm B: Dinamik Sıfırlama)</title>
     <style>
         body {
             margin: 0;
@@ -55,8 +55,9 @@
 
     <div id="overlay">
         <h2>Yavru Kuş Kurtarma: Seviye 1</h2>
-        <p>Lütfen telefonu <b>YAN ÇEVİRİN (Landscape)</b>, VR Box'a koyar gibi düz tutun ve butona basın.</p>
-        <p style="font-size: 14px; color: #bdc3c7;">(Sakkadik hareketler engellendi ve yuvalar %50 büyütüldü)</p>
+        <p><b>ÇÖZÜM B: DİNAMİK SIFIRLAMA AKTİF</b></p>
+        <p>Telefonu YAN ÇEVİRİN (Landscape), düz tutun ve butona basın.</p>
+        <p style="font-size: 14px; color: #bdc3c7;">(Her yeni kuş doğduğunda o anki kafa açınız sıfır noktası kabul edilir)</p>
         <button id="startButton">BAŞLAT VE KALİBRE ET</button>
     </div>
 
@@ -70,13 +71,13 @@
         let loopCounter = 1; 
         let totalScore = 0;
 
-        // Jiroskop Filtreleme Değişkenleri (Yan Mod İçin Optimize Edildi)
+        // Jiroskop Filtreleme Değişkenleri
         let targetX = 0;
         let currentX = 0;
-        const filterFactor = 0.05; // Sakkadik sıçramaları önlemek için filtre daha da yumuşatıldı (Daha pürüzsüz)
-        let gyroCenter = 0; 
-        const sensitivity = 0.12; // Yan mod kafa rotasyonu için ideal hassasiyet çarpanı
-        const deadzone = 1.0; // Sakkadik mikro titremeleri yutması için ölü bölge biraz artırıldı
+        const filterFactor = 0.05; 
+        let gyroCenter = null; // Başlangıçta null yapıyoruz ki her tur başında yeniden kalibre olabilsin
+        const sensitivity = 0.12; 
+        const deadzone = 1.0; 
 
         const dropSpeed = 0.04; 
 
@@ -118,7 +119,6 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
 
-            // Çift Kamera / Çift Sahne Kurulumu
             scenes.push(createSceneArchitecture());
             cameras.push(new THREE.PerspectiveCamera(60, (window.innerWidth / 2) / window.innerHeight, 0.1, 1000));
             cameras[0].position.set(0, 0, 8);
@@ -165,23 +165,20 @@
             
             scene.add(birdGroup);
 
-            // YUVALAR 1.5 KATINA BÜYÜTÜLDÜ (Radius 0.8 -> 1.2, Height 0.4 -> 0.6 yapıldı)
+            // Yuvalar (1.5 Kat Büyütülmüş)
             const nestMat = new THREE.MeshLambertMaterial({ color: 0xd35400 });
             const nestGeo = new THREE.CylinderGeometry(1.2, 1.5, 0.6, 16);
 
-            // Sol Yuva
             const lNest = new THREE.Mesh(nestGeo, nestMat);
             lNest.name = "leftNest";
             lNest.position.set(-2.5, -3.5, 0);
             scene.add(lNest);
 
-            // Sağ Yuva
             const rNest = new THREE.Mesh(nestGeo, nestMat);
             rNest.name = "rightNest";
             rNest.position.set(2.5, -3.5, 0);
             scene.add(rNest);
 
-            // Arka plan dekor bulutları
             for(let i=0; i<5; i++) {
                 const cloudGeo = new THREE.BoxGeometry(1.5, 0.2, 0.2);
                 const cloudMat = new THREE.MeshBasicMaterial({color: 0x2c3e50, transparent: true, opacity: 0.3});
@@ -193,29 +190,23 @@
             return scene;
         }
 
-        // YAN TUTUŞ (LANDSCAPE) İÇİN OPTİMİZE EDİLMİŞ JİROSKOP VERİSİ
         function handleOrientation(event) {
             if (!isPlaying) return;
 
-            // Telefon yan yatırıldığında (Landscape), kafayı sağa sola yatırma hareketi 
-            // tarayıcı tarafından artık 'beta' ekseninden okunur (cihazın yönüne göre beta veya gamma değişebilir).
-            // Çoğu VR Box yerleşiminde yan moddayken sağa-sola eğilme 'beta' verisidir.
             let rawBeta = event.beta; 
-
             if (rawBeta === null) return;
 
-            // Kalibrasyon sıfırlaması
-            if (gyroCenter === 0) {
+            // ÇÖZÜM B MERKEZİ: Eğer reset sonrası gyroCenter null ise, 
+            // hastanın O ANKİ güncel eğim açısını yeni sıfır noktası kabul et.
+            if (gyroCenter === null) {
                 gyroCenter = rawBeta;
             }
 
             let relativeAngle = rawBeta - gyroCenter;
 
-            // Sakkadik hareketleri ve mikrotitremeleri filtrelemek için deadzone kontrolü
             if (Math.abs(relativeAngle) < deadzone) {
                 targetX = 0;
             } else {
-                // Yan duruşta yön hissini doğrulamak için çarpan (gerekirse yönü ters çevirmek için eksi ile çarpılabilir)
                 targetX = relativeAngle * sensitivity;
             }
         }
@@ -224,6 +215,11 @@
             bird.position.set(0, 4, 0); 
             targetX = 0;
             currentX = 0;
+            
+            // CRITICAL ÇÖZÜM B TETİKLEYİCİSİ:
+            // Yeni kuş doğduğu an jiroskop referans merkezini sıfırlıyoruz.
+            // Böylece bir sonraki okumada hastanın kaldığı duruş "yeni merkez" olacak.
+            gyroCenter = null; 
         }
 
         function updateNestVisibilities() {
@@ -249,7 +245,6 @@
         function checkCollisionAndProgress() {
             let hitCorrectNest = false;
 
-            // Genişleyen yuva boyutuna göre tolerans aralığı artırıldı (X ekseni kontrolü)
             if (bird.position.x > 0.8 && rightNest.visible) {
                 hitCorrectNest = true; 
             } else if (bird.position.x < -0.8 && leftNest.visible) {
@@ -272,7 +267,7 @@
                             currentStage = 1; 
                         } else {
                             isPlaying = false;
-                            alert(`TEBRİKLER! Seviye 1'i tamamladınız.\nToplam kurtarılan kuş: ${totalScore}\nŞimdi Seviye 2'ye geçmeye hazırsınız!`);
+                            alert(`TEBRİKLER! Seviye 1 bitti.\nToplam kurtarılan kuş: ${totalScore}\nŞimdi Seviye 2'ye geçmeye hazırsınız!`);
                             location.reload();
                             return;
                         }
@@ -289,10 +284,8 @@
 
             requestAnimationFrame(animate);
 
-            // Low-Pass Filter (Sakkadik sıçrama engelleyici mekanizma)
             currentX += (targetX - currentX) * filterFactor;
             
-            // Sınırlar
             if(currentX > 3.5) currentX = 3.5;
             if(currentX < -3.5) currentX = -3.5;
 
@@ -305,13 +298,12 @@
                 checkCollisionAndProgress();
             }
 
-            // Sol Göz Render
+            // Çift ekran render (VR)
             renderer.setScissor(0, 0, window.innerWidth / 2, window.innerHeight);
             renderer.setViewport(0, 0, window.innerWidth / 2, window.innerHeight);
             renderer.setScissorTest(true);
             renderer.render(scenes[0], cameras[0]);
 
-            // Sağ Göz Render
             renderer.setScissor(window.innerWidth / 2, 0, window.innerWidth / 2, window.innerHeight);
             renderer.setViewport(window.innerWidth / 2, 0, window.innerWidth / 2, window.innerHeight);
             renderer.setScissorTest(true);
